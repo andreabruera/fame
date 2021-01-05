@@ -47,7 +47,6 @@ model = [torch_perceptron, loss_function, cuda]
 ents = Entities(args.words)
 ents_and_cats = ents.words
 
-
 ### Balancing the Wakeman & Henson dataset
 
 if args.words == 'wakeman_henson':
@@ -67,11 +66,11 @@ if args.words == 'wakeman_henson':
 ### For categories, substituting the entity-level word vector with the category-level word vector
 if args.categories:
     ent_list = [w for w, v in ents_and_cats.items() if v != '']
-    category_vectors = ents.category_vectors
+    category_vectors = ents.vectors(ent_list)
     word_vectors = {ents_and_cats[e] : category_vectors[ents_and_cats[e]] for e in ent_list}
 else:
     ent_list = [w for w in ents_and_cats.keys() if re.sub('[0-9]', '', str(w)) != '']
-    word_vectors = ents.word_vectors
+    word_vectors = ents.vectors(ent_list)
 
 ### Preparing the dictionary for collecting the results
 sub_accuracies = collections.defaultdict(list) 
@@ -95,7 +94,7 @@ for sub in range(1, subjects):
             with open('resources/wakeman_henson_stimuli.txt') as input_file:
                 lines = [l.strip().split('\t') for l in input_file.readlines()]
             names_to_ids = {re.sub('\..+', '', l[0]) : l[1] for l in lines if len(l) > 2}
-            original_images_individuals = pickle.load(open('/import/cogsci/andrea/dataset/eeg_images_new/sub-{:02}_eeg_vecs.pkl'.format(sub), 'rb'))
+            original_images_individuals = pickle.load(open('/import/cogsci/andrea/dataset/neuroscience/eeg_images_new/sub-{:02}_eeg_vecs.pkl'.format(sub), 'rb'))
             sub_images_individuals = {names_to_ids[k] : v for k, v in original_images_individuals.items() if k in names_to_ids.keys()}
         elif args.modality == 'fmri':
             if args.smoothed_fmri:
@@ -103,7 +102,7 @@ for sub in range(1, subjects):
             else:
                 sub_images_individuals = pickle.load(open('/import/cogsci/andrea/github/fame/data/wakeman_henson_updated_pickles/fmri_sub_{:02}.pkl'.format(sub), 'rb'))
     elif args.words == 'mitchell':
-        sub_images_individuals = pickle.load(open('/import/cogsci/andrea/dataset/mitchell_pickles/sub_{:02}.pkl'.format(sub), 'rb'))
+        sub_images_individuals = pickle.load(open('/import/cogsci/andrea/dataset/neuroscience/mitchell_pickles/sub_{:02}.pkl'.format(sub), 'rb'))
     elif args.words == 'eeg_stanford':
         sub_images_individuals = load_eeg_vectors(sub, ent_list)
 

@@ -4,6 +4,7 @@ import collections
 import torch
 import numpy
 import argparse
+import nltk
 
 from transformers import BertModel, BertTokenizer
 from utils.extract_word_lists import Entities
@@ -23,36 +24,25 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--entities', choices=['full_wiki', 'wakeman_henson', 'eeg_stanford', 'mitchell'], default='full_wiki', help='Indicates which entities should be extracted')
 args = parser.parse_args()
 
-'''
 if args.entities == 'full_wiki':
-    ents = [k for k, v in Entities('full_wiki').words[1]]
-elif args.entities == 'wakeman_henson':
-    #ents = [v for k, v in (Entities('wakeman_henson').words)[1].items()]
-    ents = Entities(args.entities).words
-elif args.entities == 'eeg_stanford':
-    ents, _ = Entities(args.entities).words
-    ents = [w for w in ents if len(w)>2]
-elif args.entities == 'mitchell':
-    ents = Entities(args.entities).words
-'''
-all_ents = Entities(args.entities).words
+    coarser, finer = Entities('full_wiki').words
+    ents = [k for k in coarser.keys()]
+    cats = [n for n in {v : 0 for k, v in finer.items()}.keys()]
+else:
+    ents_and_cats = Entities(args.entities).words
+    ents = [k for k in ents_and_cats.keys()]
+    cats = [k for k in {cat : 0 for w, cat in ents_and_cats.items()}]
 
-cats = {v : '' for k, v in all_ents.items()}
-#ents = {k for k, v in all_ents.update(cats).items()}
-ents = [k for k in cats.keys()]
-
-#words = {'cats' : cats, 'ents' : ents}
-#words = {'cats' : cats}
-words = {'cats' : ['Face']}
+words = {'ents' : ents, 'cats' : cats}
 
 bert_tokenizer = BertTokenizer.from_pretrained('bert-base-cased')
-bert_model = BertModel.from_pretrained('bert-base-cased', output_hidden_states=True)
+bert_model = BertModel.from_pretrained('bert-base-cased')
 
-#for extraction_method in ['masked', 'unmasked']:
-for extraction_method in ['unmasked']:
+#for extraction_method in ['unmasked', 'full_sentence', 'masked']:
+for extraction_method in ['full_sentence', 'masked']:
 
     ### Creating the folder for the word vectors
-    out_folder = 'data/word_vectors_facets/bert_{}_prova'.format(extraction_method)
+    out_folder = 'data/bert_january_2020/bert_{}_prova'.format(extraction_method)
     os.makedirs(out_folder, exist_ok=True)
 
     for word_type, current_words in words.items():
@@ -67,21 +57,23 @@ for extraction_method in ['unmasked']:
             if word_type == 'ents' and args.entities == 'wakeman_henson':
                 short_folder = re.sub('\.', '', file_current_word)[:3].lower()
                 short_folder = re.sub('[^a-zA-z0-9]', '_', short_folder)[:3]
-                file_name = os.path.join('/import/cogsci/andrea/dataset/wexea_annotated_wiki/ready_corpus/final_articles', short_folder, txt_file)
+                file_name = os.path.join('/import/cogsci/andrea/dataset/corpora/wexea_annotated_wiki/ready_corpus/final_articles', short_folder, txt_file)
             else:
                 short_folder = current_word[:2]
-                file_name = os.path.join('/import/cogsci/andrea/dataset/wikipedia_article_by_article', short_folder, txt_file)
+                file_name = os.path.join('/import/cogsci/andrea/dataset/corpora/wikipedia_article_by_article', short_folder, txt_file)
 
             ### Extracting the list of sentences for the current word
             try:
                 with open(file_name) as bert_txt:
                     #bert_lines = []
-                    lines = [l for l in bert_txt.readlines()]
+                    lines = [s for l in bert_txt.readlines() for s in nltk.tokenize.sent_tokenize(l)]
                     if word_type == 'ents' and args.entities == 'wakeman_henson':
                         mention = '[[{}|'.format(current_word)
                         selected_lines = [l.strip() for l in lines if mention in l]
                         if extraction_method == 'masked':
                             selected_lines = [l.replace(mention, '[MASK][[entity|') for l in selected_lines]
+                        else:
+                            selected_lines = [l.replace(mention, '[[entity|') for l in selected_lines]
                         bert_lines = []
                         for line in selected_lines:
                             new_line = []
@@ -102,41 +94,84 @@ for extraction_method in ['unmasked']:
                             bert_lines = [l.replace('{} '.format(common_noun), ' [MASK] ') for l in bert_lines]
                             bert_lines = [l.replace(' {}.'.format(common_noun.lower()), ' [MASK] ') for l in bert_lines]
                             bert_lines = [l.replace(' {},'.format(common_noun.lower()), ' [MASK] ') for l in bert_lines]
+                        else:
+                            bert_lines = [l.replace(' {} '.format(common_noun.lower()), ' [SEP] {} [SEP] '.format(common_noun.lower())) for l in bert_lines]
+                            bert_lines = [l.replace('{} '.format(common_noun), ' [SEP] {} [SEP] '.format(common_noun)) for l in bert_lines]
+                            bert_lines = [l.replace(' {}.'.format(common_noun.lower()), ' [SEP] {} [SEP] '.format(common_noun.lower())) for l in bert_lines]
+                            bert_lines = [l.replace(' {},'.format(common_noun.lower()), ' [SEP] {} [SEP] '.format(common_noun.lower())) for l in bert_lines]
+
 
             except FileNotFoundError:
                 print('impossible to extract the word vector for {}'.format(current_word))
                 continue
 
             ### Extracting the BERT vectors
+
             
+            bert_lines = [l for l in bert_lines if '[SEP]' in l or '[MASK]' in l]
             bert_vectors = []        
             if len(bert_lines) > 20:
-                bert_lines = bert_lines[:-10] 
+                bert_lines = bert_lines[:-5] 
             for ready_line in bert_lines:
                 ready_line = ready_line.replace('\t', ' ')
-                tokenized_input = bert_tokenizer.encode(ready_line)
-                if len(tokenized_input) > 512:
-                    tokenized_input = tokenized_input[:511] + [tokenized_input[-1]]
-                input_ids = torch.tensor([tokenized_input])
 
-                ### Making sure the sentence is correctly masked, in case
-                if extraction_method == 'masked':
-                    try:
-                        assert len([i for i in tokenized_input if i == 103]) > 0
-                    except AssertionError:
-                        print('There a was a BERT tokenization mistake with sentence: {}'.format(ready_line))
-                        continue
+                input_ids = bert_tokenizer(ready_line, return_tensors='pt')
+                readable_input_ids = input_ids['input_ids'][0].tolist()
 
-                ### Actually extracting the BERT vector
-                with torch.no_grad():
-                    try:
-                        output = bert_model(input_ids)
-                    except RuntimeError:
-                        print('Error with {}'.format(ready_line))
-                        pass
-                    final_vector = output[2][12][0][-4:].numpy()
-                    final_vector = numpy.average(final_vector, axis=0)
-                    bert_vectors.append(final_vector)
+                if len(readable_input_ids) <= 512:
+
+                    if extraction_method != 'masked':
+
+                        sep_indices = list()
+                        for index, bert_id in enumerate(readable_input_ids):
+                            if bert_id == 102 and index != len(readable_input_ids)-1:
+                                sep_indices.append(index)
+                        assert len(sep_indices)%2 == 0
+
+                        relevant_indices = list()
+                        relevant_ids = list()
+
+                        for sep_start in range(0, len(sep_indices), 2):
+                            new_window = [k-sep_start for k in range(sep_indices[sep_start], sep_indices[sep_start+1]-1)] 
+                            relevant_indices.append(new_window)
+
+                            sep_window = [k for k in range(sep_indices[sep_start]+1, sep_indices[sep_start+1])] 
+                            relevant_ids.append([readable_input_ids[k] for k in sep_window])
+
+                        input_ids = bert_tokenizer(re.sub('\[SEP\]', '', ready_line), return_tensors='pt')
+                        readable_input_ids = input_ids['input_ids'][0].tolist()
+                        for k_index, k in enumerate(relevant_indices):
+                            try:
+                                assert [readable_input_ids[i] for i in k] == relevant_ids[k_index]
+                                assert 102 not in [readable_input_ids[i] for i in k]
+                                assert 102 not in relevant_ids[k_index]
+                            except AssertionError:
+                                import pdb; pdb.set_trace()
+                    else:
+                        relevant_indices = [[i] for i, input_id in enumerate(readable_input_ids) if readable_input_id == 103]
+                   
+                    outputs = bert_model(**input_ids, return_dict=True, output_hidden_states=True, output_attentions=False)
+
+                    assert len(readable_input_ids) == len(outputs['hidden_states'][1][0])
+                    assert len(relevant_indices) >= 1
+                    word_layers = list()
+
+                    if extraction_method == 'full_sentence':
+                        relevant_indices = [[i for i in range(1, len(readable_input_ids))]]
+                    ### Using the first 4 layers in BERT
+                    for layer in range(1, 5):
+                        layer_container = list()
+                        for relevant_index_list in relevant_indices:
+                            for individual_index in relevant_index_list:
+                                layer_container.append(outputs['hidden_states'][layer][0][individual_index].detach().numpy())
+                        layer_container = numpy.average(layer_container, axis=0)
+                        assert len(layer_container) == 768
+                        word_layers.append(layer_container)
+                    sentence_vector = numpy.average(word_layers, axis=0)
+                    assert len(sentence_vector) == 768
+                    bert_vectors.append(sentence_vector)
+                else:
+                    print(ready_line)
 
             with open(os.path.join(out_folder, '{}.vec'.format(file_current_word)), 'w') as o:
                 for vector in bert_vectors:

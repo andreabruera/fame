@@ -10,22 +10,31 @@ def prepare_file_name(entity):
     return entity_file_name
 
 def extract_word_vectors(entity):
-    path = '/import/cogsci/andrea/github/fame/data/word_vectors_facets/bert_unmasked_prova'
+    path = '/import/cogsci/andrea/github/fame/data/bert_january_2020/bert_unmasked_prova'
     entity_file_name = prepare_file_name(entity)
 
     try:
         with open(os.path.join(path, entity_file_name)) as entity_file:
             entity_lines = [l for l in entity_file.readlines()]
+        stop = False
     except FileNotFoundError:
         mapping_dict = {'Object.vec' : 'Physical_object.vec'}
-        with open(os.path.join(path, mapping_dict[entity_file_name])) as entity_file:
-            entity_lines = [l for l in entity_file.readlines()]
+        try:
+            with open(os.path.join(path, mapping_dict[entity_file_name])) as entity_file:
+                entity_lines = [l for l in entity_file.readlines()]
+            stop = False
+        except KeyError:
+            stop = True
         
+    if not stop:
 
-    lines = [l.split('\t')[0] for l in entity_lines]
-    entity_vectors = [numpy.array(l.strip().split('\t')[1:], dtype=numpy.single) for l in entity_lines]
-    if len(entity_vectors) > 24:
-        entity_vectors = entity_vectors[:24]
+        lines = [l.split('\t')[0] for l in entity_lines]
+        entity_vectors = [numpy.array(l.strip().split('\t')[1:], dtype=numpy.single) for l in entity_lines]
+        if len(entity_vectors) > 24:
+            entity_vectors = entity_vectors[:24]
+    else:
+        entity_vectors = list()
+
     return entity_vectors
 
 class Entities:
@@ -49,8 +58,14 @@ class Entities:
         elif required_words == 'stopwords':
             self.words = self.stopwords()
 
-        self.word_vectors = {w : extract_word_vectors(w) for w in self.words if re.sub('[0-9]', '', str(w)) != ''}
-        self.category_vectors = {cat : extract_word_vectors(cat) for w, cat in (self.words).items() if cat != ''}
+    def vectors(self, words):
+        word_vectors = {w : extract_word_vectors(w) for w in words if re.sub('[0-9]', '', str(w)) != ''}
+        return word_vectors
+    '''
+    def category_vectors(self):
+        category_vectors = {cat : extract_word_vectors(cat) for w, cat in (self.words).items() if cat != ''}
+        return category_vectors
+    '''
        
     def wakeman_henson(self):
         with open('resources/wakeman_henson_stimuli.txt') as input_file:
@@ -79,7 +94,8 @@ class Entities:
         return words_and_cats
 
     def full_wiki(self):
-        entities_and_cats = collections.defaultdict(tuple)
+        coarser = collections.defaultdict(str)
+        finer = collections.defaultdict(str)
 
         for root, direct, files in os.walk(os.path.join(self.base_folder, 'wikipedia_entities_list')):
             for f in files:
@@ -90,12 +106,14 @@ class Entities:
                     name = re.sub('_', ' ', l[0])
                     if len(l) > 3:
                         try:
-                            finer_cat = l[3] if l[3] != 'Sea' and l[3] != 'River' and l[3] != 'Lake' else 'Body of water'
-                            entities_and_cats[name] = (l[2], finer_cat)
+                            coarser[name] = l[2]
+                            mapping = {'Fictional' : 'Character (arts)', 'Neighborhood' : 'Neighbourhood','Sports' : 'Athlete', 'Lake' : 'Body of water', 'Sea' : 'Body of water', 'River' : 'Body of water'}
+                            #finer_cat = l[3] if l[3] != 'Sea' and l[3] != 'River' and l[3] != 'Lake' else 'Body of water'
+                            finer[name] = l[3] if l[3] not in mapping.keys() else mapping[l[3]]
                         except KeyError:
                             print('Couldn\'t find {}'.format(name))
 
-        return entities_and_cats
+        return [coarser, finer]
 
     ### From here on, probably useless functions
 
