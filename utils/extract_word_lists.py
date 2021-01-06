@@ -41,7 +41,7 @@ class Entities:
 
     def __init__(self, required_words):
 
-        self.base_folder = os.path.join(os.getcwd(), 'data')
+        self.base_folder = os.path.join('/import/cogsci/andrea/github/names_count')
 
         if required_words == 'wakeman_henson':
             self.words = self.wakeman_henson()
