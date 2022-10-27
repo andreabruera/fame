@@ -75,6 +75,7 @@ class ExperimentInfo:
                                     'sub-{:02}'.format(s),
                                     'sub-{:02}_task-namereadingimagery_eeg-epo.fif.gz'.format(s)
                                     )
+            print(sub_path)
             assert os.path.exists(sub_path) == True
             eeg_paths[s] = sub_path
         return eeg_paths

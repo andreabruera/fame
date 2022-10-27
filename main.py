@@ -566,7 +566,7 @@ else:
 
             searchlight_clusters = SearchlightClusters(max_distance=searchlight_distance)
 
-            for n in range(n_subjects):
+            for n in range(1, 34):
 
                 logging.info('Currently working on subject {}'.format(n+1))
                 if args.experiment_id == 'two':
