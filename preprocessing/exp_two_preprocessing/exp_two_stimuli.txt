@@ -1,0 +1,17 @@
+Word	Coarse category	Fine category	Trigger
+Barack Obama	persona	un politico	101
+Hillary Clinton	persona	una politica	102
+Sigmund Freud	persona	uno scrittore	103
+J.K. Rowling	persona	una scrittrice	104
+Freddie Mercury	persona	un musicista	105
+Britney Spears	persona	una musicista	106
+Scarlett Johansson	persona	un'attrice	107
+Robert De Niro	persona	un attore	108
+Israele	luogo	uno stato	109
+Sud Africa	luogo	uno stato	110
+New York	luogo	una citta'	111
+Rio De Janeiro	luogo	una citta'	112
+Cascate del Niagara	luogo	una cascata	113
+Mar dei Caraibi	luogo	un mare	114
+Muraglia Cinese	luogo	un monumento	115
+Piramidi di Giza	luogo	un monumento	116
