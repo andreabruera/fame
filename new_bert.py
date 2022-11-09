@@ -11,7 +11,7 @@ from transformers import AutoModel, AutoTokenizer, AutoModelForMaskedLM, AutoMod
 parser = argparse.ArgumentParser()
 parser.add_argument('--layer', choices=['middle_four', 'top_four',
                                         'high_four', 'first_four',
-                                        'top_six',
+                                        'top_six', 'top_twelve',
                                         ],
                     required=True, help='Which layer?')
 parser.add_argument('--model', choices=['ITBERT', 'MBERT', 'GILBERTO',
@@ -33,6 +33,9 @@ parser.add_argument('--cuda', \
                     choices=['0', '1', '2'], \
                     required=True, help='Indicates which \
                     CUDA device to use')
+parser.add_argument('--corpus', \
+                    choices=['all', 'wiki', 'itwac', 'gutenberg', 'opensubtitles'], \
+                    required=True, help='Indicates which corpus to use')
 args = parser.parse_args()
 
 if args.model == 'ITBERT':
@@ -90,9 +93,7 @@ tokenizer = AutoTokenizer.from_pretrained(model_name, model_max_length=max_len,
 
 entity_vectors = dict()
 
-sentences_folder = os.path.join('sep_sentences_{}'.format(args.experiment_id), 'it')
-#sentences_folder = os.path.join('entity_sentences', args.experiment_id, 'english')
-#sentences_folder = os.path.join('entity_sentences', args.experiment_id, 'italian')
+sentences_folder = os.path.join('entity_sentences_{}_from_all_corpora'.format(args.experiment_id), 'it')
 
 with tqdm() as pbar:
     for f in os.listdir(sentences_folder):
@@ -102,12 +103,19 @@ with tqdm() as pbar:
         entity_vectors[stimulus] = list()
         with open(os.path.join(sentences_folder, f)) as i:
             #print(f)
-            lines = [l.strip() for l in i]
+            lines = [l.strip().split('\t') for l in i]
+        if args.corpus != 'all':
+            lines = [l for l in lines if l[0]==args.corpus]
+        #random.seed(2)
+        #lines = random.sample([l[1] for l in lines], k=len(lines))
+        lines = [l[1] for l in lines]
+        assert len(lines) >= 1
+
         #lines = random.sample(lines, k=min(len(lines), 100000))
         #lines = random.sample(lines, k=min(len(lines), 32))
         counter = 0
         for l in lines:
-            if counter > 1000:
+            if counter > 10:
                 continue
 
             if 'luke' in model_name:
@@ -207,6 +215,10 @@ with tqdm() as pbar:
                             layer_end = n_layers+1
                         if args.layer == 'top_six':
                             layer_start = -6
+                            ### outputs has at dimension 0 the final output
+                            layer_end = n_layers+1
+                        if args.layer == 'top_twelve':
+                            layer_start = -12
                             ### outputs has at dimension 0 the final output
                             layer_end = n_layers+1
                         if args.layer == 'high_four':

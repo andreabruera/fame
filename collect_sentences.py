@@ -9,13 +9,14 @@ from tqdm import tqdm
 parser = argparse.ArgumentParser()
 parser.add_argument('--language', choices=['it', 'en'], required=True)
 parser.add_argument('--experiment_id', choices=['one', 'two'], required=True)
+parser.add_argument('--corpora_folder', type=str, required=True)
 args = parser.parse_args()
 
 def process_entity(all_args):
     corpus = all_args[0]
     aliases = all_args[1]
     args = all_args[2]
-    folder = os.path.join('..', '..', 'dataset', 'corpora')
+    folder = args.corpora_folder
     ent_sentences = {e : list() for e in aliases.keys()}
     with tqdm() as counter:
         phrase_counter = 0
@@ -42,7 +43,7 @@ def process_entity(all_args):
                             #new_sent = re.sub('\W{}\W'.format(al), ' [SEP]{}[SEP] '.format(al), new_sent)
                         new_sent = re.sub(r'#', r' ', new_sent)
                         new_sent = re.sub('\s\s', r' ', new_sent)
-                        ent_sentences[e].append(new_sent.strip())
+                        ent_sentences[e].append('{}\t{}'.format(corpus, new_sent.strip()))
                         counter.update(1)
     return ent_sentences
 
@@ -59,6 +60,7 @@ for e, wikidata_id in tqdm(lines):
     if args.language in ent_dict['aliases'].keys():
         for al in ent_dict['aliases'][args.language]:
             aliases[e].append(al['value'])
+    '''
     ### Fix for body of water
     if 'acqua' in e:
         if args.language == 'it':
@@ -66,6 +68,7 @@ for e, wikidata_id in tqdm(lines):
         elif args.language == 'en':
             words = ['sea', 'Sea', 'river', 'ocean', 'Ocean', 'lake']
         aliases[e].extend(words)
+    '''
 
 correct_aliases = {k : list() for k in aliases.keys()}
 for e, als in aliases.items():
@@ -85,14 +88,12 @@ correct_aliases = {k : [v[1] for v in sorted([(len(val), val) for val in als], k
 
 corpora = ['wiki', 'opensubtitles', 'itwac', 'gutenberg']
 
-#with multiprocessing.Pool() as pool:
-#with multiprocessing.Pool(processes=int(len(correct_aliases.keys())/3)) as pool:
 with multiprocessing.Pool(processes=len(corpora)) as pool:
    results = pool.map(process_entity, [(corpus, correct_aliases, args) for corpus in corpora])
    pool.terminate()
    pool.join()
 
-out_folder = os.path.join('sep_sentences_{}'.format(args.experiment_id), args.language)
+out_folder = os.path.join('entity_sentences_{}_from_all_corpora'.format(args.experiment_id), args.language)
 os.makedirs(out_folder, exist_ok=True)
 final_sents = {k : list() for k in aliases.keys()}
 for ent_dict in results:

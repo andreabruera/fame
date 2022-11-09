@@ -706,9 +706,24 @@ def load_vectors_two(args, experiment, n):
     elif args.word_vectors in ['imageability', 'familiarity']:
 
         fams = list()
-        if args.experiment_id == 'one':
+        if args.experiment_id == 'two' and args.semantic_category == 'familiar':
+            ### considering length of documents as familiarity index
+            fams_dict = dict()
+            sent_folder = os.path.join('personally_familiar_sentences')
+            sub_marker = 'sub-{:02}'.format(n)
+            for f in os.listdir(sent_folder):
+                if sub_marker in f:
+                    f_path = os.path.join(sent_folder, f)
+                    with open(f_path) as i:
+                        words = [w for l in i.readlines() for w in l.split()]
+                    fam_name = re.sub(r'{}_|\.sentences'.format(sub_marker), '', f)
+                    fams_dict[fam_name.replace('_', ' ').replace('89 1', '89/1').strip()] = len(words)
+            for name in names:
+                assert name in fams_dict.keys()
+            fams = [fams_dict[n] for n in names]
+        else:
             filename = os.path.join('lab','stimuli',
-                                    '{}_ratings_experiment_one.csv'.format(args.word_vectors))
+                                    '{}_ratings_experiment.csv'.format(args.word_vectors))
             with open(filename) as i:
                 lines = [l.strip().split('\t')[1:] for l in i.readlines()]
             assert len(names) <= len(lines[0])
@@ -723,28 +738,13 @@ def load_vectors_two(args, experiment, n):
                 except AssertionError:
                     fam = 3.5
                 fams.append(fam)
-        else:
-            ### considering length of documents as familiarity index
-            fams_dict = dict()
-            sent_folder = os.path.join('entity_sentences', 'two', 'italian')
-            sub_marker = 'sub-{:02}'.format(n)
-            for f in os.listdir(sent_folder):
-                if sub_marker in f:
-                    f_path = os.path.join(sent_folder, f)
-                    with open(f_path) as i:
-                        words = [w for l in i.readlines() for w in l.split()]
-                    fam_name = re.sub(r'{}_|\.sentences'.format(sub_marker), '', f)
-                    fams_dict[fam_name.replace('_', ' ').replace('89 1', '89/1').strip()] = len(words)
-            for name in names:
-                assert name in fams_dict.keys()
-            fams = [fams_dict[n] for n in names]
 
         vectors = {k_one : numpy.array([abs(l_one-l_two) for k_two, l_two in zip(names, fams) if k_two!=k_one]) for k_one, l_one in zip(names, fams)}
 
     elif 'frequency' in args.word_vectors:
         freqs = list()
         for k in names:
-            with open(os.path.join('new_sentences_{}'.format(args.experiment_id), '{}.sentences'.format(k))) as i:
+            with open(os.path.join('entity_sentences_{}_from_all_corpora'.format(args.experiment_id), 'it', '{}.sentences'.format(k))) as i:
                 lines = [l.strip() for l in i.readlines()]
             lines = [l for l in lines if len(l) > 3]
             freqs.append(len(lines))
@@ -753,9 +753,52 @@ def load_vectors_two(args, experiment, n):
         else:
             vectors = {k_one : numpy.array([abs(l_one-l_two) for k_two, l_two in zip(names, freqs) if k_two!=k_one]) for k_one, l_one in zip(names, freqs)}
 
+    elif args.word_vectors == 'w2v':
+
+        w2v_model = Word2Vec.load('/import/cogsci/andrea/dataset/word_vectors/w2v_it_wexea/w2v_it_wexea')
+
+        w2v_mapping = {'Sagrada Familia': 'Sagrada Família', \
+                       'Madonna' : 'Madonna cantante', \
+                       'J.K. Rowling' : 'J K Rowling', \
+                       'Macchu Picchu' : 'Machu Picchu', \
+                       'Marylin Monroe' : 'Marilyn Monroe', \
+                       "corso d'acqua" : ['fiume', 'lago', \
+                                          'mare', 'oceano']}
+        vectors = dict()
+        for original in names:
+            #vocabulary_name = '/en/{}'.format(w.lower().replace(' ', '_'))
+            if original in w2v_mapping.keys():
+                original_alias = w2v_mapping[original]
+            else:
+                original_alias = original
+            if not isinstance(original_alias, list):
+                original_alias = [original_alias]
+
+            alias_list = list()
+            for query_original in original_alias:
+                
+                query_original = query_original.lower().replace(' ', '_')
+                try:
+                    w_vec = w2v_model[query_original]
+                except KeyError:
+                    individual_words = query_original.split('_')
+                    w_vec = numpy.average([w2v_model[w] for w in individual_words], axis=0)
+
+                alias_list.append(w_vec)
+                    
+            if len(alias_list) > 1:
+                w_vec = numpy.average(alias_list, axis=0)
+            elif len(alias_list) == 1:
+                w_vec = alias_list[0]
+            else:
+                print(original)
+            assert w_vec.shape == (300, )
+            
+            vectors[original] = w_vec
+
     else:
         vectors = dict()
-        folder = os.path.join('word_vectors', 
+        folder = os.path.join('word_vectors_10_2022', 
                               args.experiment_id,
                               args.word_vectors,
                               'top_four', 

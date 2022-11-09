@@ -256,6 +256,8 @@ if args.plot:
         else:
             plot_decoding_results_breakdown(args)
             raise RuntimeError('Still to be implemented!')
+    elif args.analysis == 'rsa_searchlight':
+        group_searchlight(args)
 
 ### Getting the results
 else:
@@ -417,14 +419,29 @@ else:
         ### Classification, decoding or searchlight
 
         elif args.analysis == 'time_resolved_rsa':
+            ### Group searchlight analysis
+            if args.plot:
+                group_searchlight(args)
+            else:
+                if not args.word_vectors:
+                    raise RuntimeError('You need to specify the word vector model for encoding/decoding')
+                if args.debugging:
+                    for n in range(1, 34):
+                        time_resolved_rsa([args, n, False])
+                else:
+                    with multiprocessing.Pool(processes=processes) as pool:
+                        pool.map(time_resolved_rsa, [(args, n, False) for n in range(1, 34)])
+                        pool.close()
+                        pool.join()
+        elif args.analysis == 'rsa_searchlight':
             if not args.word_vectors:
                 raise RuntimeError('You need to specify the word vector model for encoding/decoding')
             if args.debugging:
                 for n in range(1, 34):
-                    time_resolved_rsa([args, n])
+                    time_resolved_rsa([args, n, True])
             else:
                 with multiprocessing.Pool(processes=processes) as pool:
-                    pool.map(time_resolved_rsa, [(args, n) for n in range(1, 34)])
+                    pool.map(time_resolved_rsa, [(args, n, True) for n in range(1, 34)])
                     pool.close()
                     pool.join()
 
@@ -549,97 +566,3 @@ else:
                     results_array = join_searchlight_results(results, relevant_times)
                     write_plot_searchlight(args, n, explicit_times, results_array)
 
-        ### Searchlight RSA
-        elif args.analysis == 'rsa_searchlight':
-
-            if 'subsample' in args.subsample:
-                raise AssertionError('It does not make sense to run searchlight \
-                                                        on very subsampled data')
-
-            if args.experiment_id == 'one':
-                comp_model = WordVectors(args, experiment)
-                ordered_words = comp_model.ordered_words
-                combs = comp_model.combs
-                pairwise_similarities = comp_model.pairwise_similarities
-
-            #ordered_words, combs, pairwise_similarities = comp_model.compute_pairwise()
-
-            searchlight_clusters = SearchlightClusters(max_distance=searchlight_distance)
-
-            for n in range(1, 34):
-
-                logging.info('Currently working on subject {}'.format(n+1))
-                if args.experiment_id == 'two':
-                    experiment = ExperimentInfo(args, 
-                                                subject=n+1
-                                                )
-                    ### Correcting labels for famous/familiar case
-                    trigger_to_info = experiment.trigger_to_info
-                    trigger_to_info = {t : [v[0], v[1], 'famous'] if t>100 else [v[0], v[1], 'familiar'] for t, v in trigger_to_info.items()}
-                    if 'people' in args.semantic_category or 'places' in args.semantic_category:
-                        people_place_mapper = {'persona' : 'people', 'luogo' : 'places'}
-                        trigger_to_info = {t : [v[0], people_place_mapper[v[1]], v[2]] for t, v in trigger_to_info.items()}
-                        
-                    two_mapper = {v[0] : k for k, v in trigger_to_info.items()}
-                    comp_vectors = load_vectors_two(args, n+1)
-                    comp_model = {v : comp_vectors[k] for k, v in two_mapper.items()}
-
-                    ### Reduce if needed
-                    if args.semantic_category in ['famous', 'familiar']:
-                        ordered_words = sorted([k for k in comp_model.keys() if trigger_to_info[k][2]==args.semantic_category])
-                    elif args.semantic_category in ['people', 'places']:
-                        ordered_words = sorted([k for k in comp_model.keys() if trigger_to_info[k][1]==args.semantic_category])
-                    elif '_' in args.semantic_category and '_and_' not in args.semantic_category:
-                        v_zero = args.semantic_category.split('_')[0]
-                        v_one = args.semantic_category.split('_')[1]
-                        ordered_words = sorted([k for k in comp_model.keys() if trigger_to_info[k][1]==v_zero and trigger_to_info[k][2]==v_one])
-                    else:
-                        ordered_words = sorted(comp_model.keys())
-                    combs = list(itertools.combinations(ordered_words, 2))
-                    #pairwise_similarities = [scipy.stats.spearmanr(comp_model[c[0]], comp_model[c[1]])[0] for c in combs]
-                    pairwise_similarities = [scipy.stats.pearsonr(comp_model[c[0]], comp_model[c[1]])[0] for c in combs]
-                    #pairwise_similarities = [1-scipy.spatial.distance.cosine(comp_model[c[0]], comp_model[c[1]]) for c in combs]
-
-                data_paths = experiment.eeg_paths
-                data_path = data_paths[n]
-                eeg_data = LoadEEG(args, data_path, n, experiment)
-                eeg = eeg_data.data_dict
-                times = eeg_data.times
-                if args.data_kind == 'time_frequency':
-                    step = 2
-                else:
-                    step = 8
-                relevant_times = [t_i for t_i, t in enumerate(times) if t_i+(step*2)<len(times)][::step]
-                explicit_times = [times[t] for t in relevant_times]
-
-                electrode_indices = [searchlight_clusters.neighbors[center] for center in range(128)]
-                clusters = [(e_s, t_s) for e_s in electrode_indices for t_s in relevant_times]
-
-                ### Running searchlight on brain potentials
-
-                if args.debugging:
-                    results = list()
-                    for cluster in clusters:
-                        results.append(run_searchlight([eeg, comp_model, cluster, \
-                                            combs, pairwise_similarities, step]))
-                else:
-                    with multiprocessing.Pool(processes=processes) as p:
-                        results = p.map(run_searchlight, \
-                        [[eeg, comp_model, cluster, combs, pairwise_similarities, step] for cluster in clusters])
-                        p.terminate()
-                        p.join()
-
-                results_array = join_searchlight_results(results, relevant_times)
-                write_plot_searchlight(args, n, explicit_times, results_array)
-
-        ### Group searchlight analysis
-        elif 'group_searchlight' in args.analysis:
-
-            #if args.data_kind == 'erp':
-            if args.data_kind != 'time_frequency':                    
-                step = 16
-                group_searchlight(args, experiment)
-            elif args.data_kind == 'time_frequency':
-                step = 4
-                for f in frequencies:
-                    group_searchlight(args, experiment, hz='{}hz_'.format(f))

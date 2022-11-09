@@ -1,6 +1,9 @@
 word_vectors/
+word_vectors*
 plots/
 results/
+personally_familiar_sentences/
+entity_sentences*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

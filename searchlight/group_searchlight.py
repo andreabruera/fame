@@ -20,10 +20,9 @@ from searchlight.searchlight_utils import SearchlightClusters
 
 from io_utils import ExperimentInfo, LoadEEG
 
-def group_searchlight(args, exp, hz=''):
+def group_searchlight(args):
     print(args.analysis)
     #excluded_subjects = [18, 28, 31]
-    excluded_subjects = []
     pyplot.rcParams['figure.constrained_layout.use'] = True
 
     plot_path = prepare_folder(args).replace('results', 'plots')
@@ -34,31 +33,30 @@ def group_searchlight(args, exp, hz=''):
     mne_adj_matrix = SearchlightClusters(max_distance=22).mne_adjacency_matrix
     all_subjects = list()
 
-    for n in range(1, exp.subjects+1):
-        if n not in excluded_subjects:
-
-            if 'classification' not in args.analysis:
-                input_folder = prepare_folder(args).replace('group', 'rsa')
-            else:
-                input_folder = prepare_folder(args).replace('group_', '')
-            with open(os.path.join(input_folder, '{}_{}sub-{:02}.rsa'.format(args.word_vectors, hz, n)), 'r') as i:
-                lines = [l.strip().split('\t') for l in i.readlines()]
-            times = [float(w) for w in lines[0]]
-            electrodes = numpy.array([[float(v) for v in l] for l in lines[1:]]).T
-            all_subjects.append(electrodes)
+    for n in range(1, 34):
+        if 'classification' not in args.analysis:
+            input_folder = prepare_folder(args)
+        else:
+            input_folder = prepare_folder(args)
+        with open(os.path.join(input_folder, '{}_sub-{:02}.rsa'.format(args.word_vectors, n)), 'r') as i:
+            lines = [l.strip().split('\t') for l in i.readlines()]
+        times = [float(w) for w in lines[0]]
+        electrodes = numpy.array([[float(v) for v in l] for l in lines[1:]]).T
+        all_subjects.append(electrodes)
 
     all_subjects = numpy.array(all_subjects)
 
-    if args.experiment_id == 'two':
-        all_subjects = all_subjects-0.5
-    elif args.experiment_id == 'one':
-        if 'coarse' in args.analysis:
+    if 'rsa' not in args.analysis:
+        if args.experiment_id == 'two':
             all_subjects = all_subjects-0.5
-        else:
-            if args.semantic_category == 'all':
-                all_subjects = all_subjects-0.125
+        elif args.experiment_id == 'one':
+            if 'coarse' in args.analysis:
+                all_subjects = all_subjects-0.5
             else:
-                all_subjects = all_subjects-0.25
+                if args.semantic_category == 'all':
+                    all_subjects = all_subjects-0.125
+                else:
+                    all_subjects = all_subjects-0.25
 
 
     t_stats, _, \
@@ -67,8 +65,8 @@ def group_searchlight(args, exp, hz=''):
                                                        adjacency=mne_adj_matrix, \
                                                        threshold=dict(start=0, step=0.2), \
                                                        n_jobs=os.cpu_count()-1, \
-                                                       #n_permutations=4096, \
-                                                       n_permutations=10000, 
+                                                       n_permutations=4000, \
+                                                       #n_permutations=10000, 
                                                        #n_permutations='all', \
                                                        )
 
@@ -119,7 +117,7 @@ def group_searchlight(args, exp, hz=''):
         assert isinstance(channels, list)
         assert len(channels) == log_p.shape[0]
         assert len(times) == log_p.shape[-1]
-        txt_path = os.path.join(plot_path, '{}{}_rsa_significant_points.txt'.format(hz, args.word_vectors))
+        txt_path = os.path.join(plot_path, '{}_rsa_significant_points.txt'.format(args.word_vectors))
         with open(txt_path, 'w') as o:
             o.write('Time\tElectrode\tp-value\n')
             for t_i in range(log_p.shape[-1]):
