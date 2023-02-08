@@ -4,6 +4,7 @@ plots/
 results/
 personally_familiar_sentences/
 entity_sentences*
+clustered*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
