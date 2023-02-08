@@ -89,18 +89,21 @@ def time_resolved_rsa(all_args):
                 o.write('{}\t'.format(d))
     else:
         results_dict = dict()
-        step = 8
+        #step = 8
+        step = 26
         searchlight_distance = 20
         searchlight_clusters = SearchlightClusters(max_distance=searchlight_distance)
         relevant_times = [t_i for t_i, t in enumerate(all_eeg.times) if t_i+(step*2)<len(all_eeg.times)][::step]
-        explicit_times = [all_eeg.times[t] for t in relevant_times]
+        #explicit_times = [all_eeg.times[t] for t in relevant_times]
+        explicit_times = [all_eeg.times[t+int(step/2)] for t in relevant_times]
 
         electrode_indices = [searchlight_clusters.neighbors[center] for center in range(128)]
         clusters = [(e_s, t_s) for e_s in electrode_indices for t_s in relevant_times]
         for cluster in clusters:
             places = list(cluster[0])
             start_time = cluster[1]
-            current_eeg = {k : v[places, start_time:start_time+(step*2)].flatten() for k, v in eeg.items()}
+            #current_eeg = {k : v[places, start_time:start_time+(step*2)].flatten() for k, v in eeg.items()}
+            current_eeg = {k : v[places, start_time:start_time+step].flatten() for k, v in eeg.items()}
             eeg_sims = [1. - scipy.stats.pearsonr(current_eeg[k_one], current_eeg[k_two])[0] for k_one in stimuli for k_two in stimuli if k_one!=k_two]
             corr = scipy.stats.pearsonr(model_sims, eeg_sims)[0]
             results_dict[(places[0], start_time)] = corr

@@ -1,10 +1,15 @@
 import argparse
+import matplotlib
 import random
 import numpy
 import os
+import sklearn
 import re
 import torch
 
+from matplotlib import pyplot
+from sklearn.cluster import MeanShift, KMeans, DBSCAN
+from sklearn.manifold import TSNE
 from tqdm import tqdm
 from transformers import AutoModel, AutoTokenizer, AutoModelForMaskedLM, AutoModelWithLMHead
 
@@ -37,6 +42,10 @@ parser.add_argument('--corpus', \
                     choices=['all', 'wiki', 'itwac', 'gutenberg', 'opensubtitles'], \
                     required=True, help='Indicates which corpus to use')
 args = parser.parse_args()
+
+cluster_folder = os.path.join('plots', 'cluster_visualization', 
+                   args.experiment_id)
+os.makedirs(cluster_folder, exist_ok=True)
 
 if args.model == 'ITBERT':
     model_name = 'dbmdz/bert-base-italian-xxl-cased'
@@ -92,6 +101,7 @@ tokenizer = AutoTokenizer.from_pretrained(model_name, model_max_length=max_len,
                                           )
 
 entity_vectors = dict()
+cluster_vectors = dict()
 
 sentences_folder = os.path.join('entity_sentences_{}_from_all_corpora'.format(args.experiment_id), 'it')
 
@@ -101,6 +111,7 @@ with tqdm() as pbar:
         if 'sub' in stimulus:
             continue
         entity_vectors[stimulus] = list()
+        cluster_vectors[stimulus] = list()
         with open(os.path.join(sentences_folder, f)) as i:
             #print(f)
             lines = [l.strip().split('\t') for l in i]
@@ -115,6 +126,7 @@ with tqdm() as pbar:
         #lines = random.sample(lines, k=min(len(lines), 32))
         counter = 0
         for l in lines:
+            line_collector = list()
             if counter > 10:
                 continue
 
@@ -239,6 +251,7 @@ with tqdm() as pbar:
                             mention = numpy.hstack(mention)
                             assert mention.shape == (required_shape*2, )
                         entity_vectors[stimulus].append(mention)
+                        cluster_vectors[stimulus].append(mention)
                         entity_vectors[stimulus] = [numpy.average(entity_vectors[stimulus].copy(), axis=0)]
                         pbar.update(1)
                         counter += 1
@@ -284,6 +297,29 @@ with tqdm() as pbar:
                 entity_vectors[stimulus].append(mention)
                 pbar.update(1)
 
+
+
+'''
+clustered_vectors = dict()
+
+for k, v in cluster_vectors.items():
+    clustered_vectors[k] = list()
+    #cluster_labels = DBSCAN().fit_predict(v)
+    cluster_labels = KMeans(n_clusters=min(len(v), 50)).fit_predict(v)
+    fig, ax = pyplot.subplots(constrained_layout=True)
+    tsne = TSNE(n_components=2, verbose=1, perplexity=40, n_iter=300)
+    res = tsne.fit_transform(v)
+    for label in set(cluster_labels):
+        indices = [r_i for r_i, r in enumerate(cluster_labels) if r==label] 
+        clust_vec = numpy.average([v[i] for i in indices], axis=0)
+        clustered_vectors[k].append(clust_vec)
+        ax.scatter(res[indices, 0], res[indices, 1])
+    ax.set_title(k)
+    pyplot.savefig(os.path.join(cluster_folder, '{}.jpg'.format(k)))
+    pyplot.clf()
+    pyplot.close()
+
+'''
 out_folder = os.path.join('word_vectors_10_2022', 
                       args.experiment_id,
                       args.model,
@@ -304,3 +340,27 @@ for k, v in entity_vectors.items():
                     assert not numpy.isnan(dim)
                     o.write('{}\t'.format(float(dim)))
                 o.write('\n')
+
+'''
+### Clustered vecs
+out_folder = os.path.join('clustered_word_vectors_10_2022', 
+                      args.experiment_id,
+                      args.model,
+                      args.layer, 
+                      args.tokens,
+                      #'average'
+                      )
+os.makedirs(out_folder, exist_ok=True)
+for k, v in clustered_vectors.items():
+    with open(os.path.join(out_folder, '{}.vector'.format(k)), 'w') as o:
+        if len(v) > 0:
+            for vec in v:
+                if args.tokens == 'span_averaged':
+                    assert vec.shape[-1] == required_shape
+                elif args.tokens == 'span_concatenated':
+                    assert vec.shape[-1] == required_shape*2
+                for dim in vec:
+                    assert not numpy.isnan(dim)
+                    o.write('{}\t'.format(float(dim)))
+                o.write('\n')
+'''

@@ -226,6 +226,8 @@ class WordVectors:
 
     def read_vectors(self, args):
     
+        if args.word_vectors == 'gpt2':
+            vectors = self.read_gpt2(args)
         if args.word_vectors == 'bert' or \
         args.word_vectors == 'ernie':
             vectors = self.read_bert(args)
@@ -268,6 +270,20 @@ class WordVectors:
     
         return vectors
 
+    def read_gpt2(self, args):
+
+        ### reading file
+        with open('exp_{}_gpt2_vectors.tsv'.format(args.experiment_id)) as i:
+            lines = [l.strip().split('\t') for l in i.readlines()]
+        vectors = {l[0] : numpy.array(l[1:], dtype=numpy.float64) for l in lines}
+        for k, v in vectors.items():
+            assert v.shape == (1024, )
+        word_vectors = dict()
+        print('Now reading ITGPT2 word vectors...')
+        for new, original in tqdm(self.words.items()):
+            word_vectors[new] = vectors[original]
+        
+        return word_vectors
 
     def read_BERT(self, args):
 
@@ -692,7 +708,7 @@ def levenshtein(seq1, seq2):
     #print (matrix)
     return (matrix[size_x - 1, size_y - 1])
 
-def load_vectors_two(args, experiment, n):
+def load_vectors_two(args, experiment, n, clustered=False):
 
     names = [v[0] for v in experiment.trigger_to_info.values()]
 
@@ -796,6 +812,19 @@ def load_vectors_two(args, experiment, n):
             
             vectors[original] = w_vec
 
+    elif args.word_vectors in [ 
+                               'gpt2', 
+                               'xlm-roberta-large',
+                               'MBERT',
+                             ]:
+        ### reading file
+        #with open('exp_{}_{}_wikipedia_vectors.tsv'.format(args.experiment_id, args.word_vectors)) as i:
+        with open('exp_{}_{}_vectors.tsv'.format(args.experiment_id, args.word_vectors)) as i:
+            lines = [l.strip().split('\t') for l in i.readlines()][1:]
+        vectors = {l[0] : numpy.array(l[1:], dtype=numpy.float64) for l in lines}
+        for k, v in vectors.items():
+            #print(v.shape)
+            assert v.shape in [(1024, ), (768,)]
     else:
         vectors = dict()
         folder = os.path.join('word_vectors_10_2022', 
@@ -807,6 +836,16 @@ def load_vectors_two(args, experiment, n):
                               #'middle_four',
                               'span_averaged',
                               )
+        #clustered=True
+        if clustered:
+            folder = 'clustered_{}'.format(folder)
+            relevant_indices = dict()
+            in_folder = os.path.join('clustered_sentence_selection', 
+                                      args.experiment_id, 
+                                      args.word_vectors)
+            with open(os.path.join(in_folder, 'sub-{:02}.selection'.format(n))) as i:
+                lines = [l.strip().split('\t') for l in i.readlines()]
+            idxs = {l[0] : [int(w.split(', ')[0]) for w in l[1:]] for l in lines}
         assert os.path.exists(folder)
         files = [f for f in os.listdir(folder)]
         assert len(files) in [16, 18, 32, 40]
@@ -816,12 +855,19 @@ def load_vectors_two(args, experiment, n):
             with open(file_path) as i:
                 lines = [l.strip().split('\t') for l in i]
                 try:
-                    assert len(lines) == 1
+                    #assert len(lines) in [1, 20]
+                    assert len(lines) >= 1 and len(lines) <= 50
                 except AssertionError:
                     print('error with {}'.format(f))
                     continue
-                vecs = numpy.array(lines[0], dtype=numpy.float64)
+                if clustered:
+                    vecs = numpy.array(lines, dtype=numpy.float64)
+                else:
+                    vecs = numpy.array(lines[0], dtype=numpy.float64)
             entity = re.sub('sub-\d\d\_|\.vector', '', f)
             vectors[entity.replace('_', ' ')] = vecs
+    if clustered:
+        print('using ten')
+        vectors = {k : numpy.average(v[idxs[k][:10]], axis=0) for k, v in vectors.items()}
 
     return vectors

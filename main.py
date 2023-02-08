@@ -161,6 +161,7 @@ parser.add_argument('--word_vectors', required=False, \
                              'BERT_base_en_mentions', 'BERT_large_en_mentions',\
                              'ELMO_small_en_mentions', 'ELMO_original_en_mentions',\
                              'BERT_large',
+                             'gpt2',
                              # Contextualized + knowledge-aware
                              'BERT_base_en_sentence', 'BERT_large_en_sentence',\
                              'LUKE_base_en_mentions', 'LUKE_large_en_mentions',\
@@ -242,12 +243,6 @@ if args.plot:
         plot_feature_selection_comparison(args, experiment)
     elif args.analysis == 'time_resolved_rsa':
         plot_classification(args)
-    elif 'classification' in args.analysis:
-        if 'searchlight' in args.analysis:
-            for electrode in tqdm(range(128)):
-                plot_classification(args, electrode)
-        else:
-            plot_classification(args)
     elif 'coding' in args.analysis:
         if args.experiment_id == 'one':
             plot_decoding_results_breakdown(args)
@@ -256,8 +251,15 @@ if args.plot:
         else:
             plot_decoding_results_breakdown(args)
             raise RuntimeError('Still to be implemented!')
-    elif args.analysis == 'rsa_searchlight':
+    elif 'searchlight' in args.analysis:
         group_searchlight(args)
+    elif 'classification' in args.analysis:
+        #if 'searchlight' in args.analysis:
+        #    for electrode in tqdm(range(128)):
+        #        plot_classification(args, electrode)
+        #else:
+        #    plot_classification(args)
+        plot_classification(args)
 
 ### Getting the results
 else:
@@ -301,7 +303,7 @@ else:
                 feature_maps = numpy.array(feature_maps)
                 assert feature_maps.shape[0] == 33
 
-                for current_sub in range(33):
+                for current_sub in range(1, 34):
 
                     other_maps = numpy.delete(feature_maps.copy(), \
                                               current_sub, axis=0)
@@ -310,12 +312,12 @@ else:
                     if args.feature_selection_method == 'attribute_correlation':
                         file_path = os.path.join(out_path, \
                                     'sub-{:02}_feature_selection.{}_{}'\
-                                    .format(current_sub+1, args.word_vectors, args.feature_selection_method)\
+                                    .format(current_sub, args.word_vectors, args.feature_selection_method)\
                                     )
                     else:
                         file_path = os.path.join(out_path, \
                                     'sub-{:02}_feature_selection.{}'\
-                                    .format(current_sub+1, args.feature_selection_method)\
+                                    .format(current_sub, args.feature_selection_method)\
                                     )
                     with open(file_path, 'w') as o:
                         for i in other_maps:
@@ -345,7 +347,7 @@ else:
                     for n_one, t_stats in enumerate(erp_collector):
                         file_path = os.path.join(out_path, \
                             'sub-{:02}_{}_feature_selection.{}_searchlight'\
-                            .format(n_one+1, args.word_vectors, \
+                            .format(n_one, args.word_vectors, \
                             args.data_kind))
                         t_stats = t_stats.flatten()
                         with open(file_path, 'w') as o:
@@ -400,7 +402,7 @@ else:
                     for n_one, t_stats in enumerate(tfr_collector):
                         file_path = os.path.join(out_path, \
                                 'sub-{:02}_{}_feature_selection.{}_searchlight'\
-                                .format(n_one+1, args.word_vectors, \
+                                .format(n_one, args.word_vectors, \
                                 args.data_kind))
                         print('\n\n{}\n\n'.format(file_path))
                         t_stats = t_stats.flatten()
@@ -465,8 +467,8 @@ else:
             ### Loading all EEG data
             if args.word_vectors == 'ceiling':
                 ceiling = dict()
-                for n_ceiling in range(33):
-                    eeg_data_ceiling = LoadEEG(args, experiment, n_ceiling+1)
+                for n_ceiling in range(1, 34):
+                    eeg_data_ceiling = LoadEEG(args, experiment, n_ceiling)
                     eeg_ceiling = eeg_data_ceiling.data_dict
                     for k, v in eeg_ceiling.items():
                         ### Adding and flattening
@@ -481,20 +483,20 @@ else:
                     comp_vectors = load_vectors_two(args, experiment, 33)
 
             #for n in range(n_subjects):
-            for n in range(33):
+            for n in range(1, 34):
                 if args.experiment_id == 'two':
                     experiment = ExperimentInfo(args, 
-                                                subject=n+1
+                                                subject=n
                                                 )
-                print('Subject {}'.format(n+1))
+                print('Subject {}'.format(n))
                 if args.word_vectors == 'ceiling':
                     comp_vectors = {k : numpy.average([vec for vec_i, vec in enumerate(v) if vec_i!=n], axis=0) for k, v in ceiling.items()}
                 else:
                     if args.experiment_id == 'two':
-                        comp_vectors = load_vectors_two(args, experiment, n+1)
+                        comp_vectors = load_vectors_two(args, experiment, n)
 
                 sub_accuracy, word_by_word_evaluation, \
-                        times = prepare_and_test(n+1, args, experiment, \
+                        times = prepare_and_test(n, args, experiment, \
                                      comp_vectors)
                 accuracies.append(sub_accuracy)
 
@@ -543,9 +545,12 @@ else:
                     experiment = ExperimentInfo(args, subject=n)
                     eeg = LoadEEG(args, experiment, n) 
 
-                    step = 8
-                    relevant_times = [t_i for t_i, t in enumerate(eeg.times) if t_i+(step*2)<len(eeg.times)][::step]
-                    explicit_times = [eeg.times[t] for t in relevant_times]
+                    #step = 8
+                    step = 26
+                    relevant_times = [t_i for t_i, t in enumerate(eeg.times) if t_i+step<len(eeg.times)][::step]
+                    #relevant_times = [t_i for t_i, t in enumerate(eeg.times) if t_i+(step*2)<len(eeg.times)][::step]
+                    #explicit_times = [eeg.times[t] for t in relevant_times]
+                    explicit_times = [eeg.times[t+int(step/2)] for t in relevant_times]
 
                     electrode_indices = [searchlight_clusters.neighbors[center] for center in range(128)]
                     clusters = [(e_s, t_s) for e_s in electrode_indices for t_s in relevant_times]

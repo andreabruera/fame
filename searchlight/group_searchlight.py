@@ -26,19 +26,24 @@ def group_searchlight(args):
     pyplot.rcParams['figure.constrained_layout.use'] = True
 
     plot_path = prepare_folder(args).replace('results', 'plots')
-    significance = .005
+    #significance = .005
     significance = .05
     #significance = 0.1
     electrode_index_to_code = SearchlightClusters().index_to_code
-    mne_adj_matrix = SearchlightClusters(max_distance=22).mne_adjacency_matrix
+    mne_adj_matrix = SearchlightClusters(max_distance=20).mne_adjacency_matrix
     all_subjects = list()
 
     for n in range(1, 34):
-        if 'classification' not in args.analysis:
-            input_folder = prepare_folder(args)
+        #if 'classification' not in args.analysis:
+        #    input_folder = prepare_folder(args)
+        #else:
+        #    input_folder = prepare_folder(args)
+        input_folder = prepare_folder(args)
+        if 'classification' in args.analysis:
+            input_file = os.path.join(input_folder, 'sub-{:02}.rsa'.format(n))
         else:
-            input_folder = prepare_folder(args)
-        with open(os.path.join(input_folder, '{}_sub-{:02}.rsa'.format(args.word_vectors, n)), 'r') as i:
+            input_file = os.path.join(input_folder, '{}_sub-{:02}.rsa'.format(args.word_vectors, n))
+        with open(input_file, 'r') as i:
             lines = [l.strip().split('\t') for l in i.readlines()]
         times = [float(w) for w in lines[0]]
         electrodes = numpy.array([[float(v) for v in l] for l in lines[1:]]).T
@@ -77,6 +82,7 @@ def group_searchlight(args):
         logging.info('Minimum p-value for {}: {}'.format(args.word_vectors, min(p_values)))
 
     original_shape = t_stats.shape
+    #reshaped_p = [val if val<=significance else 1. for val in p_values]
     reshaped_p = p_values.reshape(original_shape).T
     
     log_p = -numpy.log(p_values)
@@ -96,7 +102,8 @@ def group_searchlight(args):
     #relevant_times
     tmin = times[0]
     if args.data_kind != 'time_frequency':
-        sfreq = 256/8
+        #sfreq = 256/8
+        sfreq = 256/26
     elif args.data_kind == 'time_frequency':
         sfreq = 256 / 16
     info = mne.create_info(ch_names=[v for k, v in SearchlightClusters().index_to_code.items()], \
@@ -105,6 +112,7 @@ def group_searchlight(args):
                            ch_types='eeg')
 
     evoked = mne.EvokedArray(log_p, info=info, tmin=tmin)
+    #evoked = mne.EvokedArray(reshaped_p, info=info, tmin=tmin)
 
     montage = mne.channels.make_standard_montage('biosemi128')
     evoked.set_montage(montage)
@@ -117,7 +125,10 @@ def group_searchlight(args):
         assert isinstance(channels, list)
         assert len(channels) == log_p.shape[0]
         assert len(times) == log_p.shape[-1]
-        txt_path = os.path.join(plot_path, '{}_rsa_significant_points.txt'.format(args.word_vectors))
+        if 'classification' in args.analysis:
+            txt_path = os.path.join(plot_path, 'searchlight_classification_significant_points.txt')
+        else:
+            txt_path = os.path.join(plot_path, '{}_searchlight_rsa_significant_points.txt'.format(args.word_vectors))
         with open(txt_path, 'w') as o:
             o.write('Time\tElectrode\tp-value\n')
             for t_i in range(log_p.shape[-1]):
@@ -139,20 +150,24 @@ def group_searchlight(args):
             title='RSA Searchlight for {} - {}'.format(args.word_vectors, args.semantic_category.replace('_', ' '))
         title = '{} - {}'.format(title, correction)
 
-        if len(significant_times)  > 12:
-            ncolumns = 12
+        if len(significant_times)  > 4:
+            ncolumns = len(significant_times)
         else:
             ncolumns = 'auto'
         #if mode == 'significant':
-        evoked.plot_topomap(ch_type='eeg', time_unit='s', times=significant_times, \
-                            units='-log(p)\nif\np<={}\n(-log(0.05)=2.9\n-log(0.0005)=7.6)'.format(significance), 
+        evoked.plot_topomap(ch_type='eeg', 
+                            time_unit='s', 
+                            times=significant_times,
                             ncols=ncolumns,
                             nrows='auto', 
                             outlines='skirt',
-                            vmin=1.5, 
-                            vmax=7.5,
+                            #vmin=-numpy.log(significance), 
+                            #vmax=0.,
+                            vmin=0.,
                             scalings={'eeg':1.}, 
-                            cmap='PuBu', 
+                            cmap='YlGnBu', 
+                            colorbar=False,
+                            size = 3.,
                             title=title)
         #else:
             #evoked.plot_topomap(ch_type='eeg', time_unit='s', times=[i for i in evoked.times], units='-log(p)\nif\np<=.05', ncols=12, nrows='auto', vmin=0., scalings={'eeg':1.}, cmap='PuBu', title=title)
