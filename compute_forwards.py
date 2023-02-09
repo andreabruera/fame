@@ -36,14 +36,16 @@ for folder in folders:
     for s in tqdm(range(1, 34)):
 
         collector = dict()
-        out_f = os.path.join('..', '..', 'dataset', 'neuroscience', 
-               folder, 'reconstructed', 'sub-{:02}'.format(s),)
+        out_f = os.path.join('/', 'import', 'cogsci', 'andrea',
+                             'dataset', 'neuroscience', 
+                             folder, 'reconstructed', 'sub-{:02}'.format(s),)
         os.makedirs(out_f, exist_ok=True)
 
         ### Loading epochs
-        f = os.path.join('..', '..', 'dataset', 'neuroscience', 
-               folder, 'derivatives', 'sub-{:02}'.format(s), 
-               'sub-{:02}_task-namereadingimagery_eeg-epo.fif.gz'.format(s))
+        f = os.path.join('/', 'import', 'cogsci','andrea', 
+                         'dataset', 'neuroscience', 
+                         folder, 'derivatives', 'sub-{:02}'.format(s), 
+                         'sub-{:02}_task-namereadingimagery_eeg-epo.fif.gz'.format(s))
         epochs = mne.read_epochs(f, preload=True, )
         epochs = epochs.pick_types(eeg=True, stim=False)
         epochs.set_montage(montage)
@@ -57,16 +59,16 @@ for folder in folders:
         for evoked in all_evoked:
             avg_evoked = list()
             data = evoked.get_data()
-            t_points = numpy.array((0, 0.07))
-            for i in range(17):
+            t_points = numpy.array((-0.1, 0.))
+            for i in range(11):
                 t_indices = [t_i for t_i, t in enumerate(evoked.times) if t>=t_points[0] and t<t_points[1]]
                 print(t_indices)
                 t_point = numpy.average(data[:, t_indices], axis=1)
                 assert t_point.shape == (128,)
                 avg_evoked.append(t_point)
-                t_points += 0.07
+                t_points += 0.1
             avg_evoked = numpy.stack(avg_evoked, axis=-1)
-            assert avg_evoked.shape == (128, 17)
+            assert avg_evoked.shape == (128, 11)
             avg_evoked = mne.EvokedArray(
                                          data=avg_evoked,
                                          tmin=evoked.tmin,

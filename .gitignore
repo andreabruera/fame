@@ -5,6 +5,7 @@ results/
 personally_familiar_sentences/
 entity_sentences*
 clustered*
+fmri_masks/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

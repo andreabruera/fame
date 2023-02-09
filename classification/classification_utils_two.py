@@ -174,9 +174,9 @@ def write_time_resolved_classification(n, args, final_score, times, frequencies)
     ###Writing to file
     
     if args.corrected:
-        file_path = os.path.join(out_path, 'sub_{:02}_{}_corrected_scores.txt'.format(n+1, score_type))
+        file_path = os.path.join(out_path, 'sub_{:02}_{}_corrected_scores.txt'.format(n, score_type))
     else:
-        file_path = os.path.join(out_path, 'sub_{:02}_{}_uncorrected_scores.txt'.format(n+1, score_type))
+        file_path = os.path.join(out_path, 'sub_{:02}_{}_uncorrected_scores.txt'.format(n, score_type))
     #file_path = os.path.join(out_path, 'sub_{:02}_{}_scores.txt'.format(n+1, score_type))
     with open(os.path.join(file_path), 'w') as o:
         for t in times:

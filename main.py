@@ -91,10 +91,24 @@ parser.add_argument('--subsample', choices=['subsample',
                          'all_time_points'], \
                     required=True, help='Defines whether \
                     to subsample by averaging sample within 40ms window')
-parser.add_argument('--data_kind', choices=['erp', 'combined',
-                                            'alpha', 'beta', 'lower_gamma', 
-                                            'higher_gamma', 'delta', 'theta',
-                                            ], \
+
+parser.add_argument('--data_kind', choices=[
+
+                        'erp', 'combined',
+                        'alpha', 'beta', 'lower_gamma', 
+                        'higher_gamma', 'delta', 'theta',
+                        ### ATLs
+                        'bilateral_anterior_temporal_lobe', 'left_atl', 'right_atl', 
+                        ### Lobes
+                        'left_frontal_lobe', 'right_frontal_lobe', 'bilateral_frontal_lobe',
+                        'left_temporal_lobe', 'right_temporal_lobe', 'bilateral_temporal_lobe',
+                        'left_parietal_lobe', 'right_parietal_lobe', 'bilateral_parietal_lobe',
+                        'left_occipital_lobe', 'right_occipital_lobe', 'bilateral_occipital_lobe',
+                        'left_limbic_system', 'right_limbic_system', 'bilateral_limbic_system',
+                        ### Networks
+                        'language_network', 'general_semantics_network',
+                        'default_mode_network', 'social_network', 
+                                            ], 
                     required=True, help='Time-frequency or ERP analyses?') 
 
 ### Arguments which have an effect on folder structure
@@ -265,7 +279,7 @@ if args.plot:
 else:
     #frequencies = tfr_frequencies(args)
     #n_subjects = experiment.subjects
-    processes = int(os.cpu_count()/2)
+    processes = int(os.cpu_count()/8)
     #processes = int((os.cpu_count()/3)*2)
 
     if __name__ == '__main__':

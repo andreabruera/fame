@@ -4,15 +4,17 @@ import pandas
 import random
 import re
 import collections
+import nilearn
 import numpy
 import matplotlib
 import itertools
 import random
 import scipy
 
-from tqdm import tqdm
 from matplotlib import pyplot
+from nilearn import image
 from scipy import stats
+from tqdm import tqdm
 
 from lab.utils import read_words, read_trigger_ids, select_words
 from searchlight.searchlight_utils import SearchlightClusters
@@ -32,7 +34,8 @@ def tfr_frequencies(args):
         frequencies = list(range(1, 5)) + [0.5]
     elif args.data_kind == 'theta':
         frequencies = list(range(4, 9))
-    elif args.data_kind == ('erp'):
+    #elif args.data_kind == ('erp'):
+    else:
         frequencies = 'na'
     frequencies = numpy.array(frequencies)
 
@@ -60,22 +63,47 @@ class ExperimentInfo:
         self.runs = 24
         self.subjects = 33
         self.current_subject = subject
-        self.eeg_paths = self.generate_eeg_paths()
+        self.eeg_paths = self.generate_eeg_paths(args)
         self.events_log, self.trigger_to_info = self.read_events_log()
         if 'coding' not in self.analysis and 'rsa' not in self.analysis:
             self.test_splits = self.generate_test_splits()
 
-    def generate_eeg_paths(self):
+    def generate_eeg_paths(self, args):
         eeg_paths = dict()
-        fold = 'derivatives'
+
         for s in range(1, self.subjects+1):
-            sub_path = os.path.join(
-                                    self.data_folder,
-                                    fold,
-                                    'sub-{:02}'.format(s),
-                                    'sub-{:02}_task-namereadingimagery_eeg-epo.fif.gz'.format(s)
-                                    )
-            #print(sub_path)
+
+            if args.data_kind in ['erp', 'alpha', 'beta', 'delta', 'theta', 'gamma']:
+                fold = 'derivatives'
+                sub_path = os.path.join(
+                                        self.data_folder,
+                                        fold,
+                                        'sub-{:02}'.format(s),
+                                        'sub-{:02}_task-namereadingimagery_eeg-epo.fif.gz'.format(s)
+                                        )
+                #print(sub_path)
+
+            elif args.data_kind in [
+                                    ### ATLs
+                                    'bilateral_anterior_temporal_lobe', 'left_atl', 'right_atl', 
+                                    ### Lobes
+                                    'left_frontal_lobe', 'right_frontal_lobe', 'bilateral_frontal_lobe',
+                                    'left_temporal_lobe', 'right_temporal_lobe', 'bilateral_temporal_lobe',
+                                    'left_parietal_lobe', 'right_parietal_lobe', 'bilateral_parietal_lobe',
+                                    'left_occipital_lobe', 'right_occipital_lobe', 'bilateral_occipital_lobe',
+                                    'left_limbic_system', 'right_limbic_system', 'bilateral_limbic_system',
+                                    ### Networks
+                                    'language_network', 'general_semantics_network',
+                                    'default_mode_network', 'social_network', 
+                                    ]:
+
+                fold = 'reconstructed'
+                sub_path = os.path.join(
+                                        self.data_folder,
+                                        fold,
+                                        'sub-{:02}'.format(s),
+                                        )
+
             assert os.path.exists(sub_path) == True
             eeg_paths[s] = sub_path
         return eeg_paths
@@ -345,8 +373,69 @@ class LoadEEG:
         self.data_path = experiment.eeg_paths[subject]
         self.experiment = experiment
         self.ceiling = ceiling
-        self.full_data, self.data_dict, self.times, self.all_times, \
-        self.frequencies, self.data_shape = self.load_epochs(args)
+        self.trigger_to_info = experiment.trigger_to_info
+        if args.data_kind in ['erp', 'alpha', 'beta', 'delta', 'theta', 'gamma']:
+            self.full_data, self.data_dict, \
+            self.times, self.all_times, \
+            self.frequencies, self.data_shape = self.load_epochs(args)
+        elif args.data_kind in [
+                                ### ATLs
+                                'bilateral_anterior_temporal_lobe', 'left_atl', 'right_atl', 
+                                ### Lobes
+                                'left_frontal_lobe', 'right_frontal_lobe', 'bilateral_frontal_lobe',
+                                'left_temporal_lobe', 'right_temporal_lobe', 'bilateral_temporal_lobe',
+                                'left_parietal_lobe', 'right_parietal_lobe', 'bilateral_parietal_lobe',
+                                'left_occipital_lobe', 'right_occipital_lobe', 'bilateral_occipital_lobe',
+                                'left_limbic_system', 'right_limbic_system', 'bilateral_limbic_system',
+                                ### Networks
+                                'language_network', 'general_semantics_network',
+                                'default_mode_network', 'social_network', 
+                                ]:
+            self.fmri_mask = self.load_mask(args)
+            self.full_data, self.data_dict, \
+            self.times, self.all_times, \
+            self.frequencies, self.data_shape = self.load_source(args)
+
+    def load_mask(self, args):
+
+        map_path = os.path.join('fmri_masks', '{}.nii'.format(args.data_kind))
+        try:
+            assert os.path.exists(map_path)
+        except AssertionError:
+            map_path = os.path.join('fmri_masks', '{}.nii.gz'.format(args.data_kind))
+            assert os.path.exists(map_path)
+        print('Masking {}...'.format(args.data_kind))
+        map_nifti = nilearn.image.load_img(map_path)
+        map_nifti = nilearn.image.binarize_img(map_nifti, threshold=0.)
+        sample_f = os.path.join(self.data_path, 'trigger_1.nii.gz')
+        sample_img = nilearn.image.load_img(sample_f)
+        map_nifti = nilearn.image.resample_to_img(map_nifti, sample_f, interpolation='nearest')
+
+        return map_nifti
+
+    def load_source(self, args):
+
+        data_dict =dict()
+
+        for trig in self.trigger_to_info.keys():
+            f = os.path.join(self.data_path, 'trigger_{}.nii.gz'.format(trig))
+            img = nilearn.image.load_img(f)
+            label = re.sub('^.+_|[.].+$', '', f)
+            masked_data = nilearn.masking.apply_mask(img, self.fmri_mask)
+            data_dict[int(label)] = masked_data.T
+            data_shape = data_dict[int(label)].shape
+
+        times = [
+                -.05, .05, .15, .25, 
+                 .35, .45, .55, .65,
+                 .75, .85, .95, #1.05
+                 ]
+        full_data_dict = data_dict.copy()
+        all_times = times.copy()
+
+        frequencies = tfr_frequencies(args)
+
+        return full_data_dict, data_dict, times, all_times, frequencies, data_shape
 
     def load_epochs(self, args):
 
