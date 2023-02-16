@@ -190,6 +190,12 @@ class ExperimentInfo:
         if self.experiment_id == 'two':
             ### Creating for each test set two tuples, one for each class
 
+            #cat_index = 2
+            ### always two!
+            cat_length = 8
+            combinations_one_cat = list(itertools.combinations(list(range(cat_length)), 1))
+            combinations = list(itertools.product(combinations_one_cat, repeat=2))
+            '''
             ### Reducing stimuli to nested sub-class
             if self.semantic_category in ['people', 'places', 'famous', 'familiar']:
                 cat_index = 2
@@ -201,6 +207,7 @@ class ExperimentInfo:
                 cat_length = 16
                 combinations_one_cat = list(itertools.combinations(list(range(cat_length)), 2))
                 combinations = list(itertools.product(combinations_one_cat, repeat=2))
+            '''
             ### Semantic domain
             if 'coarse' in self.analysis:
                 cat_index = 1
@@ -322,6 +329,8 @@ class ExperimentInfo:
             cat_index = 2
         current_cats = set([v[cat_index] for v in self.trigger_to_info.values()])
         cat_to_average_length = {k : numpy.average([len(n[0]) for n in self.trigger_to_info.values() if n[cat_index]==k]) for k in current_cats}
+        cat_to_lengths = [[len(n[0]) for n in self.trigger_to_info.values() if n[cat_index]==k] for k in current_cats]
+        stat_sig_length = scipy.stats.ttest_ind(cat_to_lengths[0], cat_to_lengths[1])
         ### Replication
         if self.experiment_id == 'one':
             cat_to_average_length = {'actor' : 14,
@@ -336,32 +345,48 @@ class ExperimentInfo:
                                   'monument' : 11
                                   }
         print('Current categories and average lengths: {}'.format(cat_to_average_length))
+        print('current statistical difference among the two categories: {}'.format(stat_sig_length))
 
-        ### Computing correlation
-        split_corrs = list()
-        for trigs in test_splits:
-            labels = list()
-            lengths = list()
-            ### Test set
-            for t in trigs:
-                labels.append(cat_to_average_length[self.trigger_to_info[t][cat_index]])
-                lengths.append(len(self.trigger_to_info[t][0]))
-            corr = list(scipy.stats.pearsonr(lengths, labels))
-            split_corrs.append(corr)
+        ### correction needs to take place only when
+        ### difference is statistically significant
 
-        ### Sorting by increasing absolute value
-        split_corrs = sorted(enumerate(split_corrs), key=lambda item : abs(item[1][0]))
-        n_folds = 100
+        if stat_sig_length[1] < 0.1 and self.corrected:
+            if len(test_splits[0]) == 2:
+                std = numpy.std([len(v[0]) for v in self.trigger_to_info.values()])
+                ### simple strategy: taking test cases where distance among items
+                ### is not superior to 0.5 std
+                test_splits = [t for t in test_splits if abs(len(self.trigger_to_info[t[0]][0])-len(self.trigger_to_info[t[1]][0]))<=std]
+                assert len(test_splits) > 1
+                print('for subject {}, considering a maximum difference of {} letters'.format(self.current_subject, int(std)))
 
-        zero_corr_sets = len([t for t in split_corrs if t[1][0]==0.0])
-        if self.corrected:
-            if zero_corr_sets >= n_folds:
-                test_splits = random.sample([test_splits[t[0]] for t in split_corrs if t[1][0]==0.0], k=n_folds)
+            ### using correlation
             else:
-                test_splits = [test_splits[t[0]] for t in split_corrs][:n_folds]
+                ### Computing correlation
+                split_corrs = list()
+                for trigs in test_splits:
+                    labels = list()
+                    lengths = list()
+                    ### Test set
+                    for t in trigs:
+                        labels.append(cat_to_average_length[self.trigger_to_info[t][cat_index]])
+                        lengths.append(len(self.trigger_to_info[t][0]))
+                    if len(trigs) > 2:
+                        corr = list(scipy.stats.pearsonr(lengths, labels))
+                    else:
+                        corr = abs(lengths[0]-lengths[1])
+                    split_corrs.append(corr)
+                split_corrs = sorted(enumerate(split_corrs), key=lambda item : abs(item[1][0]))
+                zero_corr_sets = len([t for t in split_corrs if t[1][0]==0.0])
+                if len(zero_corr_sets) >= 10:
+                    test_splits = random.sample([test_splits[t[0]] for t in split_corrs if t[1][0]==0.0], k=n_folds)
+                else:
+                    test_splits = [test_splits[t[0]] for t in split_corrs][:10]
+
+        ### no correction
         else:
+            n_folds = len(test_splits)
             test_splits = random.sample(test_splits, k=min(n_folds, len(test_splits)))
-        print('Minimum correlation within the test set: {}'.format(split_corrs[min(n_folds-1, len(test_splits)-1)]))
+        print('using {} splits'.format(len(test_splits)))
 
         return test_splits
 

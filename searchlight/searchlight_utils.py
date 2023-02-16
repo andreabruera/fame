@@ -7,7 +7,7 @@ from scipy import stats
 from tqdm import tqdm
 
 
-def write_plot_searchlight(args, n, explicit_times, results_array, hz=''):
+def write_plot_searchlight(args, n, explicit_times, results_array):
 
     from io_utils import prepare_folder
     output_folder = prepare_folder(args)
@@ -18,6 +18,10 @@ def write_plot_searchlight(args, n, explicit_times, results_array, hz=''):
     else:
         input_file = os.path.join(output_folder,
                   '{}_sub-{:02}.rsa'.format(args.word_vectors, n))
+
+    ### adding information about cluster_size
+    input_file = input_file.replace('.rsa', '_{}.rsa'.format(args.searchlight_radius_size))
+
     with open(input_file, 'w') as o:
         for t in explicit_times:
             o.write('{}\t'.format(t))
@@ -61,8 +65,9 @@ def join_searchlight_results(results, relevant_times):
 
 class SearchlightClusters:
 
-    def __init__(self, max_distance=20):
+    def __init__(self, max_distance):
 
+        self.time_radius = 26
         self.max_distance = max_distance
         self.index_to_code = self.indices_to_codes()
         self.neighbors = self.read_searchlight_clusters()
@@ -84,14 +89,14 @@ class SearchlightClusters:
         for ikv, kv in enumerate(self.neighbors.items()):
             v = kv[1][1:]
 
-            assert [i for i, k in enumerate(mne_sparse_adj_matrix.toarray()[ikv]) if k == 1] == v
+            assert sorted([i for i, k in enumerate(mne_sparse_adj_matrix.toarray()[ikv]) if k == 1]) == sorted(v)
 
         return mne_sparse_adj_matrix 
 
     def indices_to_codes(self):
 
         index_to_code = collections.defaultdict(str)
-        with open('searchlight/searchlight_clusters_{}mm.txt'.format(self.max_distance), 'r') as searchlight_file:
+        with open('searchlight/searchlight_clusters_{}mm.txt'.format(float(self.max_distance*1000)), 'r') as searchlight_file:
             for l in searchlight_file:
                 if 'CE' not in l:
                     l = l.strip().split('\t')
@@ -103,7 +108,8 @@ class SearchlightClusters:
 
         searchlight_clusters = collections.defaultdict(list)
 
-        with open('searchlight/searchlight_clusters_{}mm.txt'.format(self.max_distance), 'r') as searchlight_file:
+        with open('searchlight/searchlight_clusters_{}mm.txt'.format(float(self.max_distance*1000)), 'r') as searchlight_file:
+            print(searchlight_file)
             for l in searchlight_file:
                 if 'CE' not in l:
                     l = [int(i) for i in l.strip().split('\t')[1:]]

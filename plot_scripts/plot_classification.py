@@ -29,7 +29,7 @@ def return_baseline(args):
 
     return random_baseline
 
-def check_statistical_significance(args, setup_data):
+def check_statistical_significance(args, setup_data, times):
 
     if not type(setup_data) == numpy.array:
         setup_data = numpy.array(setup_data)
@@ -41,38 +41,51 @@ def check_statistical_significance(args, setup_data):
                          popmean=random_baseline, \
                          alternative='greater').pvalue
     '''
-    ### Wilcoxon + FDR correction
-    #significance_data = setup_data.T - random_baseline
-    #original_p_values = list()
-    #for t in significance_data:
-    #    p = stats.wilcoxon(t, alternative='greater')[1]
-    #    original_p_values.append(p)
+    if args.data_kind not in ['erp', 'alpha', 'beta', 'gamma', 'delta', 'theta']:
+        ### Wilcoxon + FDR correction
+        significance_data = setup_data.T - random_baseline
+        original_p_values = list()
+        for t in significance_data:
+            p = stats.wilcoxon(t, alternative='greater')[1]
+            original_p_values.append(p)
 
-    #assert len(original_p_values) == setup_data.shape[-1]
-    #corrected_p_values = mne.stats.fdr_correction(original_p_values)[1]
-    ### TFCE correction using 1 time-point window
-    adj = numpy.zeros((setup_data.shape[-1], setup_data.shape[-1]))
-    for i in range(setup_data.shape[-1]):
-        #if args.subsample == 'subsample_2' or args.data_kind != 'erp':
-        if args.subsample == 'subsample_2':
-            win = range(1, 2)
-        else:
-            win = range(1, 3)
-        for window in win:
-            adj[i, max(0, i-window)] = 1
-            adj[i, min(setup_data.shape[-1]-1, i+window)] = 1
-    adj = scipy.sparse.coo_matrix(adj)
-    corrected_p_values = mne.stats.permutation_cluster_1samp_test(setup_data-random_baseline, tail=1, \
-                                                 n_permutations=4000,
-                                                 #adjacency=None, \
-                                                 adjacency=adj, \
-                                                 threshold=dict(start=0, step=0.2))[2]
+        assert len(original_p_values) == setup_data.shape[-1]
+        corrected_p_values = mne.stats.fdr_correction(original_p_values[2:6])[1]
+        corrected_p_values = original_p_values[:2] +corrected_p_values.tolist() + original_p_values[6:]
+    else:
+        ### TFCE correction using 1 time-point window
+        ### following Leonardelli & Fairhall 2019, checking only in the range 100-750ms
+        lower_indices = [t_i for t_i, t in enumerate(times) if t<0.1]
+        upper_indices = [t_i for t_i, t in enumerate(times) if t>.75]
+
+        relevant_indices = [t_i for t_i, t in enumerate(times) if (t>=0.1 and t<=.75)]
+        setup_data = setup_data[:, relevant_indices]
+        adj = numpy.zeros((setup_data.shape[-1], setup_data.shape[-1]))
+        for i in range(setup_data.shape[-1]):
+            #if args.subsample == 'subsample_2' or args.data_kind != 'erp':
+            if args.subsample == 'subsample_2':
+                win = range(1, 2)
+            else:
+                win = range(1, 3)
+            for window in win:
+                adj[i, max(0, i-window)] = 1
+                adj[i, min(setup_data.shape[-1]-1, i+window)] = 1
+        adj = scipy.sparse.coo_matrix(adj)
+        corrected_p_values = mne.stats.permutation_cluster_1samp_test(setup_data-random_baseline, tail=1, \
+                                                     n_permutations=4000,
+                                                     #adjacency=None, \
+                                                     adjacency=adj, \
+                                                     threshold=dict(start=0, step=0.2))[2]
+
+        corrected_p_values = [1. for t in lower_indices] + corrected_p_values.tolist() + [1. for t in upper_indices]
+    assert len(corrected_p_values) == len(times)
     print(min(corrected_p_values))
     significance = 0.05
     significant_indices = [(i, v) for i, v in enumerate(corrected_p_values) if round(v, 2)<=significance]
+    semi_significant_indices = [(i, v) for i, v in enumerate(corrected_p_values) if (round(v, 2)<=0.08 and v>0.05)]
     print('Significant indices at {}: {}'.format(significance, significant_indices))
 
-    return significant_indices
+    return significant_indices, semi_significant_indices
 
 def possibilities(args):
 
@@ -214,14 +227,14 @@ def read_files(args):
         if args.experiment_id == 'one':
             t_max = 1.2
         else:
-            t_max = 1.1
+            t_max = 0.9
         times = [float(v) for v in lines[0]]
         times = [t for t in times if t <= t_max]
 
         ### Collecting subject scores
         lines = [float(v) for v in lines[1]]
-        lines = [lines[t_i] for t_i, t in enumerate(times) if t>t_min]
-        times = [t for t in times if t > t_min]
+        lines = [lines[t_i] for t_i, t in enumerate(times) if t>=t_min]
+        times = [t for t in times if t >= t_min]
 
         '''
         final_lines = list()
@@ -345,17 +358,17 @@ def plot_classification(args):
 
     ### Plotting when stimulus appears and disappears
     ### using both a line and text
-    ax[0].text(x=0.012, y=ymin+correction, s='stimulus\nappears', \
-                ha='left', va='bottom', fontsize=23)
-    stim_disappears = 0.75 if args.experiment_id=='one' else 0.5
-    ax[0].vlines(x=stim_disappears, ymin=ymin+correction, \
-                 ymax=ymax-correction, color='darkgrey', \
-                 linestyle='dashed')
-    ax[0].text(x=stim_disappears+0.02, y=ymin+correction, s='stimulus\ndisappears', \
-                ha='left', va='bottom', fontsize=23)
     ax[0].vlines(x=0., ymin=ymin+correction, \
                  ymax=ymax-correction, color='darkgrey', \
                  linestyle='dashed')
+    ax[0].text(x=0.012, y=ymin+correction, s='stimulus\nappears', \
+                ha='left', va='bottom', fontsize=23)
+    #stim_disappears = 0.75 if args.experiment_id=='one' else 0.5
+    #ax[0].vlines(x=stim_disappears, ymin=ymin+correction, \
+    #             ymax=ymax-correction, color='darkgrey', \
+    #             linestyle='dashed')
+    #ax[0].text(x=stim_disappears+0.02, y=ymin+correction, s='stimulus\ndisappears', \
+    #            ha='left', va='bottom', fontsize=23)
     ### Removing all the parts surrounding the plot above
 
     ax[0].spines['top'].set_visible(False)
@@ -379,7 +392,7 @@ def plot_classification(args):
     ax[1].spines['top'].set_visible(False)
     ax[1].spines['right'].set_visible(False)
     ax[1].spines['bottom'].set_visible(False)
-    ax[1].spines['left'].set_visible(False)
+    #ax[1].spines['left'].set_visible(False)
     ax[1].get_xaxis().set_visible(False)
     #ax[1].get_yaxis().set_visible(False)
 
@@ -426,8 +439,9 @@ def plot_classification(args):
     ### Plot is randomly colored
     color = (numpy.random.random(), numpy.random.random(), numpy.random.random())
 
-    sig_values = check_statistical_significance(args, data)
+    sig_values, semi_sig_values = check_statistical_significance(args, data, times)
     sig_indices = [k[0] for k in sig_values]
+    semi_sig_indices = [k[0] for k in semi_sig_values]
 
     assert len(data) == 33
     '''
@@ -525,6 +539,14 @@ def plot_classification(args):
                     color='white', \
                     edgecolors='black', \
                     s=20., linewidth=.5)
+    ax[0].scatter([times[t] for t in semi_sig_indices], \
+    #ax[0].scatter(significant_indices, \
+               [numpy.average(data, axis=0)[t] \
+                    for t in semi_sig_indices], \
+                    color='white', \
+                    edgecolors='black', \
+                    s=20., linewidth=.5,
+                    marker='*')
 
     ### Plotting the legend in 
     ### a separate figure below
@@ -614,5 +636,6 @@ def plot_classification(args):
     plot_name = file_name.replace('txt', 'jpg')
     print(plot_name)
     pyplot.savefig(plot_name, dpi=600)
+    pyplot.savefig(plot_name.replace('jpg', 'svg'), dpi=600)
     pyplot.clf()
     pyplot.close(fig)

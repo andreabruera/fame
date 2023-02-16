@@ -227,9 +227,30 @@ parser.add_argument('--wv_dim_reduction', \
                     choices=['no_dim_reduction', 'pca50', 'pca60', 'pca70', \
                              'pca80', 'pca90', 'pca99'], help='Defines whether \
                     to employ dimensionality on word vectors or not')
+parser.add_argument('--searchlight_spatial_radius', 
+                    choices=[
+                             ### 30mm radius, used in
+                             ### Collins et al. 2018, NeuroImage, Distinct neural processes for the perception of familiar versus unfamiliar faces along the visual hierarchy revealed by EEG
+                             ### Su et al., Optimising Searchlight Representational Similarity Analysis (RSA) for EMEG
+                             'large_distance',
+                             ### 20mm radius, used in 
+                             ### Su et al. 2014, Mapping tonotopic organization in human temporal cortex: representational similarity analysis in EMEG source space. Frontiers in neuroscience
+                             'small_distance',
+                             ### 5 closest electrodes
+                             ### Graumann et al. 2022, The spatiotemporal neural dynamics of object location representations in the human brain, nature human behaviour
+                             'fixed'
+                             ], 
+                             required=True
+                    )
 args = parser.parse_args()
 
-searchlight_distance = 22
+if args.searchlight_spatial_radius == 'large_distance':
+    searchlight_distance = 0.03
+elif args.searchlight_spatial_radius == 'small_distance':
+    searchlight_distance = 0.02
+elif args.searchlight_spatial_radius == 'fixed':
+    searchlight_distance = 5
+searchlight_clusters = SearchlightClusters(searchlight_distance)
 
 if args.feature_reduction != 'no_reduction':
     args.feature_reduction = int(args.feature_reduction)
@@ -266,7 +287,7 @@ if args.plot:
             plot_decoding_results_breakdown(args)
             raise RuntimeError('Still to be implemented!')
     elif 'searchlight' in args.analysis:
-        group_searchlight(args)
+        group_searchlight(args, searchlight_distance)
     elif 'classification' in args.analysis:
         #if 'searchlight' in args.analysis:
         #    for electrode in tqdm(range(128)):
@@ -446,7 +467,7 @@ else:
                         time_resolved_rsa([args, n, False])
                 else:
                     with multiprocessing.Pool(processes=processes) as pool:
-                        pool.map(time_resolved_rsa, [(args, n, False) for n in range(1, 34)])
+                        pool.map(time_resolved_rsa, [(args, n, False, searchlight_clusters) for n in range(1, 34)])
                         pool.close()
                         pool.join()
         elif args.analysis == 'rsa_searchlight':
@@ -454,10 +475,10 @@ else:
                 raise RuntimeError('You need to specify the word vector model for encoding/decoding')
             if args.debugging:
                 for n in range(1, 34):
-                    time_resolved_rsa([args, n, True])
+                    time_resolved_rsa([args, n, True, searchlight_clusters])
             else:
                 with multiprocessing.Pool(processes=processes) as pool:
-                    pool.map(time_resolved_rsa, [(args, n, True) for n in range(1, 34)])
+                    pool.map(time_resolved_rsa, [(args, n, True, searchlight_clusters) for n in range(1, 34)])
                     pool.close()
                     pool.join()
 
@@ -535,7 +556,7 @@ else:
                 if args.debugging:
 
                     for n in range(1, 34):
-                        print('Subject {}'.format(n))
+                        print('\nSubject {}'.format(n))
                         run_time_resolved_classification([args, n])
                 
                 ### All subjects with a separate process, much quicker
@@ -551,7 +572,6 @@ else:
             ### Searchlight classification
             else:
                 
-                searchlight_clusters = SearchlightClusters(max_distance=searchlight_distance)
 
                 for n in range(1, 34):
 
@@ -559,12 +579,8 @@ else:
                     experiment = ExperimentInfo(args, subject=n)
                     eeg = LoadEEG(args, experiment, n) 
 
-                    #step = 8
-                    step = 26
-                    relevant_times = [t_i for t_i, t in enumerate(eeg.times) if t_i+step<len(eeg.times)][::step]
-                    #relevant_times = [t_i for t_i, t in enumerate(eeg.times) if t_i+(step*2)<len(eeg.times)][::step]
-                    #explicit_times = [eeg.times[t] for t in relevant_times]
-                    explicit_times = [eeg.times[t+int(step/2)] for t in relevant_times]
+                    relevant_times = [t_i for t_i, t in enumerate(eeg.times) if t_i+searchlight_clusters.time_radius<len(eeg.times)][::searchlight_clusters.time_radius]
+                    explicit_times = [eeg.times[t+int(searchlight_clusters.time_radius/2)] for t in relevant_times]
 
                     electrode_indices = [searchlight_clusters.neighbors[center] for center in range(128)]
                     clusters = [(e_s, t_s) for e_s in electrode_indices for t_s in relevant_times]
@@ -574,11 +590,11 @@ else:
                         results = list()
                         for cluster in clusters:
                             results.append(run_searchlight_classification([ 
-                                                args, experiment, eeg, cluster, step]))
+                                                args, experiment, eeg, cluster, searchlight_radius.time_radius]))
                     else:
                         with multiprocessing.Pool(processes=processes) as p:
                             results = p.map(run_searchlight_classification, 
-                            [[args, experiment, eeg, cluster, step] for cluster in clusters])
+                            [[args, experiment, eeg, cluster, searchlight_radius.time_radius] for cluster in clusters])
                             p.terminate()
                             p.join()
 

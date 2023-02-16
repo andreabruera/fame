@@ -2,16 +2,31 @@ import argparse
 import mne
 import collections
 import numpy
+import scipy
+
+from scipy import spatial
 
 ### Finds and writes to file for each searchlight cluster 1. the number 2. the center 3+ the neighbouring ones at a max distance of 20mm
 
-def get_searchlight_groups(max_distance=0.02):
+def get_searchlight_groups(max_distance):
 
     max_distance = float(max_distance)
     montage = mne.channels.make_standard_montage('biosemi128', head_size=0.088)
     positions = montage.get_positions()['ch_pos']
     position_indices = {electrode : electrode_index for electrode_index, electrode in enumerate(positions.keys())}
 
+    searchlight_groups = dict()
+    for electrode, position in positions.items():
+        key = (electrode, position_indices[electrode])
+        sims = list()
+        for electrode_two, position_two in positions.items():
+            if electrode != electrode_two:
+                sims.append((electrode_two, scipy.spatial.distance.euclidean(position, position_two)))
+        sims = sorted(sims, key=lambda item : item[1])[:10]
+        searchlight_groups[key] = [position_indices[elec[0]] for elec in sims]
+
+
+    '''
     ### Rescaling so that the minimum coordinate value is 0
     scaler = list()
     for i in range(3):
@@ -30,6 +45,7 @@ def get_searchlight_groups(max_distance=0.02):
                         marker[axis_index] = True
                 if False not in marker:
                     searchlight_groups[(channel, position_indices[channel])].append(position_indices[other_channel])
+    '''
 
     return searchlight_groups
 
@@ -39,7 +55,7 @@ args = parser.parse_args()
 
 searchlight_groups = get_searchlight_groups(args.max_distance)
 
-with open('searchlight_clusters_{}mm.txt'.format(int(float(args.max_distance)*1000)), 'w') as o:
+with open('searchlight_clusters_{}mm.txt'.format(float(args.max_distance)*1000), 'w') as o:
     o.write('Central electrode (CE) code\tCE index\tNeighbors\n')
     for channel_info, other_channels_list in searchlight_groups.items():
         o.write('{}\t{}\t'.format(channel_info[0], channel_info[1]))

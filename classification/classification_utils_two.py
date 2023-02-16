@@ -9,7 +9,7 @@ import collections
 
 from scipy import stats
 from sklearn.svm import SVC
-from sklearn.linear_model import LogisticRegression, RidgeClassifierCV
+from sklearn.linear_model import LogisticRegression, RidgeClassifierCV, RidgeClassifier
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import LabelEncoder
 from sklearn.multiclass import OneVsRestClassifier
@@ -109,7 +109,9 @@ def classify(arg):
 
         ### Differentiating between binary and multiclass classifier
         #classifier = SVC()
-        classifier = RidgeClassifierCV(alphas=(0.1, 1.0, 10.0, 100., 1000., 10000.))
+        #classifier = RidgeClassifierCV(alphas=(0.1, 1.0, 10.0, 100., 1000., 10000.))
+        classifier = RidgeClassifier()
+        #classifier = RidgeClassifierCV()
 
         ### Fitting the model on the training data
         classifier.fit(t_train, train_true)

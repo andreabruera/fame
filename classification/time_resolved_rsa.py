@@ -12,6 +12,7 @@ def time_resolved_rsa(all_args):
     args = all_args[0]
     n = all_args[1]
     searchlight = all_args[2]
+    searchlight_clusters = all_args[3]
 
     ### Loading the experiment
     experiment = ExperimentInfo(args, subject=n)
@@ -90,12 +91,12 @@ def time_resolved_rsa(all_args):
     else:
         results_dict = dict()
         #step = 8
-        step = 26
-        searchlight_distance = 20
-        searchlight_clusters = SearchlightClusters(max_distance=searchlight_distance)
-        relevant_times = [t_i for t_i, t in enumerate(all_eeg.times) if t_i+(step*2)<len(all_eeg.times)][::step]
+        #step = 26
+        #relevant_times = [t_i for t_i, t in enumerate(all_eeg.times) if t_i+(step*2)<len(all_eeg.times)][::step]
         #explicit_times = [all_eeg.times[t] for t in relevant_times]
-        explicit_times = [all_eeg.times[t+int(step/2)] for t in relevant_times]
+        #explicit_times = [all_eeg.times[t+int(step/2)] for t in relevant_times]
+        relevant_times = [t_i for t_i, t in enumerate(all_eeg.times) if t_i+searchlight_clusters.time_radius<len(all_eeg.times)][::searchlight_clusters.time_radius]
+        explicit_times = [all_eeg.times[t+int(searchlight_clusters.time_radius/2)] for t in relevant_times]
 
         electrode_indices = [searchlight_clusters.neighbors[center] for center in range(128)]
         clusters = [(e_s, t_s) for e_s in electrode_indices for t_s in relevant_times]
@@ -103,7 +104,7 @@ def time_resolved_rsa(all_args):
             places = list(cluster[0])
             start_time = cluster[1]
             #current_eeg = {k : v[places, start_time:start_time+(step*2)].flatten() for k, v in eeg.items()}
-            current_eeg = {k : v[places, start_time:start_time+step].flatten() for k, v in eeg.items()}
+            current_eeg = {k : v[places, start_time:start_time+searchlight_clusters.time_radius].flatten() for k, v in eeg.items()}
             eeg_sims = [1. - scipy.stats.pearsonr(current_eeg[k_one], current_eeg[k_two])[0] for k_one in stimuli for k_two in stimuli if k_one!=k_two]
             corr = scipy.stats.pearsonr(model_sims, eeg_sims)[0]
             results_dict[(places[0], start_time)] = corr
@@ -119,8 +120,13 @@ def time_resolved_rsa(all_args):
 
         output_folder = prepare_folder(args)
 
-        with open(os.path.join(output_folder, \
-                  '{}_sub-{:02}.rsa'.format(args.word_vectors, n)), 'w') as o:
+        out_file = os.path.join(
+                                output_folder, 
+                  '{}_sub-{:02}.rsa'.format(args.word_vectors, n)
+                  )
+        if searchlight:
+            out_file = out_file.replace('.rsa', '_{}.rsa'.format(args.searchlight_spatial_radius))
+        with open(out_file, 'w') as o:
             for t in explicit_times:
                 o.write('{}\t'.format(t))
             o.write('\n')
