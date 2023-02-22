@@ -20,7 +20,7 @@ from searchlight.searchlight_utils import SearchlightClusters
 
 from io_utils import ExperimentInfo, LoadEEG
 
-def group_searchlight(args, searchlight_distance):
+def group_searchlight(args):
 
     print(args.analysis)
     #excluded_subjects = [18, 28, 31]
@@ -29,7 +29,7 @@ def group_searchlight(args, searchlight_distance):
     plot_path = prepare_folder(args).replace('results', 'plots')
     #significance = .005
     #significance = 0.1
-    clusters = SearchlightClusters(searchlight_distance)
+    clusters = SearchlightClusters(args)
     electrode_index_to_code = clusters.index_to_code
     mne_adj_matrix = clusters.mne_adjacency_matrix
     all_subjects = list()
@@ -46,8 +46,10 @@ def group_searchlight(args, searchlight_distance):
             input_file = os.path.join(input_folder, '{}_sub-{:02}.rsa'.format(args.word_vectors, n))
 
         ### adding information about cluster_size
-        input_file = input_file.replace('.rsa', '_{}.rsa'.format(args.searchlight_spatial_radius))
+        input_file = input_file.replace('.rsa', 
+                     '_spatial_{}_temporal_{}.rsa'.format(args.searchlight_spatial_radius, args.searchlight_temporal_radius))
 
+        assert os.path.exists(input_file)
         with open(input_file, 'r') as i:
             lines = [l.strip().split('\t') for l in i.readlines()]
         ### reading times and electrodes
@@ -56,7 +58,7 @@ def group_searchlight(args, searchlight_distance):
         assert electrodes.shape == (len(times), 128)
         ### reducing relevant time points
         ### following leonardelli & fairhall, range is 100-750ms
-        relevant_indices = [t_i for t_i, t in enumerate(times) if (t>0.1 and t<0.75)]
+        relevant_indices = [t_i for t_i, t in enumerate(times) if (t>0.2 and t<0.6)]
         #relevant_indices = [t_i for t_i, t in enumerate(times) if t>0.]
         times = times[relevant_indices]
         electrodes = electrodes[relevant_indices, :]
@@ -88,7 +90,7 @@ def group_searchlight(args, searchlight_distance):
                                                        #n_permutations=10000, 
                                                        #n_permutations='all', \
                                                        )
-
+    #print(min(t_stats.flatten()))
     ### Plotting the results
     if 'classification' in args.analysis:
         logging.info('Minimum p-value for {}: {}'.format(args.semantic_category, min(p_values)))
@@ -113,7 +115,6 @@ def group_searchlight(args, searchlight_distance):
             if numpy.sum(reshaped_p[:, t]) < reshaped_p.shape[0]:
                 significant_times.append(times[t])
 
-
         #significant_points = res[2].reshape(res[0].shape).T
         #significant_points = -numpy.log(significant_points)
         #significant_points[significant_points<=-numpy.log(0.05)] = 0.0
@@ -129,7 +130,13 @@ def group_searchlight(args, searchlight_distance):
         tmin = times[0]
         if args.data_kind != 'time_frequency':
             #sfreq = 256/8
-            sfreq = 256/clusters.time_radius
+            if args.searchlight_temporal_radius == 'large':
+                sfreq = 10
+            elif args.searchlight_temporal_radius == 'medium':
+                sfreq = 20 
+            elif args.searchlight_temporal_radius == 'small':
+                sfreq = 40
+
         elif args.data_kind == 'time_frequency':
             sfreq = 256 / 16
         info = mne.create_info(ch_names=[v for k, v in clusters.index_to_code.items()], \
@@ -143,6 +150,7 @@ def group_searchlight(args, searchlight_distance):
         log_p = log_p.reshape(original_shape).T
         #evoked = mne.EvokedArray(log_p, info=info, tmin=tmin)
         evoked = mne.EvokedArray(t_stats.T, info=info, tmin=tmin)
+
         #evoked = mne.EvokedArray(reshaped_p, info=info, tmin=tmin)
 
         montage = mne.channels.make_standard_montage('biosemi128')
@@ -162,9 +170,12 @@ def group_searchlight(args, searchlight_distance):
         else:
             txt_path = os.path.join(plot_path, '{}_searchlight_rsa_significant_points_{}.txt'.format(args.word_vectors, significance))
 
-        txt_path = txt_path.replace('.txt', '_{}.txt'.format(args.searchlight_spatial_radius))
+        txt_path = txt_path.replace('.txt', '_spatial_{}_temporal_{}.txt'.format(
+                                                   args.searchlight_spatial_radius,
+                                                   args.searchlight_temporal_radius,
+                                                   ))
         with open(txt_path, 'w') as o:
-            o.write('Time\tElectrode\tp-value\n')
+            o.write('Time\tElectrode\tp-value\tt-value\n')
             for t_i in range(reshaped_p.shape[-1]):
                 time = times[t_i]
                 for c_i in range(reshaped_p.shape[0]):
@@ -172,7 +183,8 @@ def group_searchlight(args, searchlight_distance):
                     p = reshaped_p[c_i, t_i]
                     if p != 0.:
                         p_value = reshaped_p[c_i, t_i]
-                        o.write('{}\t{}\t{}\n'.format(time, channel, p_value))
+                        t_value = t_stats.T[c_i, t_i]
+                        o.write('{}\t{}\t{}\t{}\n'.format(time, channel, p_value, t_value))
         #for i in range(2):
 
         #mode = 'all' if i==0 else 'significant'
@@ -184,31 +196,31 @@ def group_searchlight(args, searchlight_distance):
             title='RSA Searchlight for {} - {}'.format(args.word_vectors, args.semantic_category.replace('_', ' '))
         title = '{} - {}, p<={}'.format(title, correction, significance)
 
-        if len(significant_times)  > 4:
-            ncolumns = len(significant_times)
-        else:
-            ncolumns = 'auto'
         #if mode == 'significant':
         evoked.plot_topomap(ch_type='eeg', 
                             time_unit='s', 
                             #times=significant_times,
-                            times=times,
-                            ncols=ncolumns,
+                            #times=times-.025,
+                            times=evoked.times,
+                            ncols='auto',
                             nrows='auto', 
                             #outlines='skirt',
                             #vmin=-numpy.log(significance), 
-                            #vmax=0.06,
+                            vmin=-1.,
+                            vmax=10.,
                             #vmin=0.000001,
                             scalings={'eeg':1.}, 
                             #cmap='YlGnBu', 
                             #cmap='bone_r',
                             cmap='Spectral_r',
+                            #cmap='cividis',
                             mask=reshaped_p<=significance,
-                            mask_params=dict(marker='o', markerfacecolor='w', markeredgecolor='k',
-                                        linewidth=0, markersize=5),
+                            mask_params=dict(marker='o', markerfacecolor='black', markeredgecolor='black',
+                                        linewidth=0, markersize=4),
                             #colorbar=False,
                             size = 3.,
-                            title=title)
+                            title=title,
+                            )
         #else:
             #evoked.plot_topomap(ch_type='eeg', time_unit='s', times=[i for i in evoked.times], units='-log(p)\nif\np<=.05', ncols=12, nrows='auto', vmin=0., scalings={'eeg':1.}, cmap='PuBu', title=title)
 
@@ -217,7 +229,7 @@ def group_searchlight(args, searchlight_distance):
             f_name = f_name.replace('.jpg', 'classification_{}.jpg'.format(args.data_kind))
         else:
             f_name = f_name.replace('.jpg', '_rsa_{}.jpg'.format(args.word_vectors))
-        f_name = f_name.replace('.jpg', '_{}.jpg'.format(args.searchlight_spatial_radius))
+        f_name = f_name.replace('.jpg', '_spatial_{}_temporal_{}.jpg'.format(args.searchlight_spatial_radius, args.searchlight_temporal_radius))
         print(f_name)
         pyplot.savefig(f_name, dpi=600)
         pyplot.savefig(f_name.replace('jpg', 'svg'), dpi=600)

@@ -13,7 +13,7 @@ from plot_scripts.plot_violins import plot_violins
 
 def return_baseline(args):
 
-    if args.analysis == 'time_resolved_rsa':
+    if args.analysis in ['time_resolved_rsa', 'time_resolved_rsa_encoding']:
         random_baseline=0.
     else:
         if args.experiment_id == 'one':
@@ -50,8 +50,9 @@ def check_statistical_significance(args, setup_data, times):
             original_p_values.append(p)
 
         assert len(original_p_values) == setup_data.shape[-1]
-        corrected_p_values = mne.stats.fdr_correction(original_p_values[2:6])[1]
-        corrected_p_values = original_p_values[:2] +corrected_p_values.tolist() + original_p_values[6:]
+        #corrected_p_values = mne.stats.fdr_correction(original_p_values[2:6])[1]
+        #corrected_p_values = original_p_values[:2] +corrected_p_values.tolist() + original_p_values[6:]
+        corrected_p_values = mne.stats.fdr_correction(original_p_values)[1]
     else:
         ### TFCE correction using 1 time-point window
         ### following Leonardelli & Fairhall 2019, checking only in the range 100-750ms
@@ -63,16 +64,18 @@ def check_statistical_significance(args, setup_data, times):
         adj = numpy.zeros((setup_data.shape[-1], setup_data.shape[-1]))
         for i in range(setup_data.shape[-1]):
             #if args.subsample == 'subsample_2' or args.data_kind != 'erp':
-            if args.subsample == 'subsample_2':
-                win = range(1, 2)
-            else:
-                win = range(1, 3)
+            win = range(1, 2)
+            #win = range(1, 3)
+            #if args.subsample == 'subsample_2':
+            #    win = range(1, 2)
+            #else:
+            #    win = range(1, 3)
             for window in win:
                 adj[i, max(0, i-window)] = 1
                 adj[i, min(setup_data.shape[-1]-1, i+window)] = 1
         adj = scipy.sparse.coo_matrix(adj)
         corrected_p_values = mne.stats.permutation_cluster_1samp_test(setup_data-random_baseline, tail=1, \
-                                                     n_permutations=4000,
+                                                     #n_permutations=4000,
                                                      #adjacency=None, \
                                                      adjacency=adj, \
                                                      threshold=dict(start=0, step=0.2))[2]
@@ -199,11 +202,10 @@ def read_files(args):
         #    file_path = file_path.replace('_scores.txt', '_corrected_scores.txt')
         #else:
         #    file_path = file_path.replace('_scores.txt', '_uncorrected_scores.txt')
-        if args.analysis == 'time_resolved_rsa':
-            file_path = os.path.join(path, 'sub_{:02}_{}.txt'.format(sub, args.word_vectors))
-            correction = ''
+        correction = 'corrected' if args.corrected else 'uncorrected'
+        if args.analysis in ['time_resolved_rsa', 'time_resolved_rsa_encoding']:
+            file_path = os.path.join(path, 'sub_{:02}_{}_{}_scores.txt'.format(sub, args.word_vectors, correction))
         else:
-            correction = 'corrected' if args.corrected else 'uncorrected'
             file_path = os.path.join(path, 'sub_{:02}_accuracy_{}_scores.txt'.format(sub, correction))
         
         if not os.path.exists(file_path):
@@ -333,7 +335,7 @@ def plot_classification(args):
         correction = 0.01
         ax[0].set_ylim(bottom=ymin, top=ymax)
     else:
-        if args.analysis == 'time_resolved_rsa':
+        if args.analysis in ['time_resolved_rsa', 'time_resolved_rsa_encoding']:
             correction = 0.01
             ymin = -.1
             ymax = .15
@@ -473,15 +475,17 @@ def plot_classification(args):
         label = 'famous vs familiar'
     elif args.analysis == 'time_resolved_rsa':
         label = 'RSA - {}'.format(args.entities)
+    elif args.analysis == 'time_resolved_rsa_encoding':
+        label = 'RSA - {}'.format(args.entities)
     else:
         raise RuntimeError('There was a mistake')
 
     ### entities and correction
     
-    if args.analysis == 'time_resolved_rsa':
-        correction = args.word_vectors
-    else:
-        correction = 'corrected' if args.corrected else 'uncorrected'
+    #if args.analysis in ['time_resolved_rsa' 'time_resolved_rsa_encoding']:
+    #    correction = args.word_vectors
+    #else:
+    correction = 'corrected' if args.corrected else 'uncorrected'
     label = '{} - {} - {}'.format(label, args.semantic_category, correction)
 
     #if 'whole_trial' in args.analysis:
@@ -611,9 +615,12 @@ def plot_classification(args):
                             args.semantic_category,
                             args.entities,
                             args.data_kind, 
-                            args.subsample,
+                            #args.subsample,
+                            args.temporal_resolution,
                             args.average,
                             correction))
+    if args.analysis in ['time_resolved_rsa', 'time_resolved_rsa_encoding']:
+        file_name = file_name.replace('.txt', '_{}.txt'.format(args.word_vectors))
     with open(file_name, 'w') as o:
         o.write('Data\tsignificant time points & FDR-corrected p-value\n')
         #for l, values in sig_container.items():

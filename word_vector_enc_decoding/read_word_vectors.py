@@ -621,7 +621,6 @@ class WordVectors:
                     current_word_vectors.append(current_vec)
                 current_word_vectors = numpy.average(numpy.array(current_word_vectors[:6]), axis=0)
                 assert current_word_vectors.shape == (12, 768)
-                import pdb; pdb.set_trace()
                 current_word_vectors = numpy.average(current_word_vectors, axis=0)
                 assert current_word_vectors.shape == (768, )
                 
@@ -711,13 +710,46 @@ def levenshtein(seq1, seq2):
 def load_vectors_two(args, experiment, n, clustered=False):
 
     names = [v[0] for v in experiment.trigger_to_info.values()]
+    if args.word_vectors == 'ceiling':
+        ceiling = dict()
+        for n_ceiling in range(1, 34):
+            eeg_data_ceiling = LoadEEG(args, experiment, n_ceiling)
+            eeg_ceiling = eeg_data_ceiling.data_dict
+            for k, v in eeg_ceiling.items():
+                ### Adding and flattening
+                if k not in ceiling.keys():
+                    ceiling[k] = list()
+                ceiling[k].append(v.flatten())
+        comp_vectors = {k : numpy.average([vec for vec_i, vec in enumerate(v) if vec_i!=n-1], axis=0) for k, v in ceiling.items()}
+        comp_vectors = {experiment.trigger_to_info[k][0] : v for k, v in comp_vectors.items()}
 
-    if args.word_vectors == 'word_length':
-        lengths = [len(w) for w in names]
-        vectors = {k_one : numpy.array([abs(l_one-l_two) for k_two, l_two in zip(names, lengths) if k_two!=k_one]) for k_one, l_one in zip(names, lengths)}
+    elif args.word_vectors in ['coarse_category', 'famous_familiar', 'fine_category']:
+        if args.word_vectors == 'coarse_category':
+            categories = {v[0] : v[1] for v in experiment.trigger_to_info.values()}
+        elif args.word_vectors == 'famous_familiar':
+            if args.experiment_id == 'one':
+                raise RuntimeError('There is no famous_familiar distinction for this experiment!')
+            categories = {v[0] : v[2] for v in experiment.trigger_to_info.values()}
+        elif args.word_vectors == 'fine_category':
+            if args.experiment_id == 'two':
+                raise RuntimeError('There is no famous_familiar distinction for this experiment!')
+            categories = {v[0] : v[2] for v in experiment.trigger_to_info.values()}
+        #vectors = {k_one : numpy.array([0. if categories[k_one]==categories[k_two] else 1. for k_two in names if k_one != k_two]) for k_one in names}
+        sorted_categories = sorted(set(categories.values()))
+        vectors = {w : sorted_categories.index(categories[w]) for w in names}
+
+    elif args.word_vectors == 'word_length':
+        #lengths = [len(w) for w in names]
+        #vectors = {k_one : numpy.array([abs(l_one-l_two) for k_two, l_two in zip(names, lengths) if k_two!=k_one]) for k_one, l_one in zip(names, lengths)}
+        vectors = {w : len(w) for w in names}
+        vectors = zero_one_norm(vectors)
 
     elif args.word_vectors == 'orthography':
-        vectors = {k_one : numpy.array([levenshtein(k_one,k_two) for k_two in names if k_two!=k_one]) for k_one in names}
+        ### vector of differences
+        #vectors = {k_one : numpy.array([levenshtein(k_one,k_two) for k_two in names if k_two!=k_one]) for k_one in names}
+        ### average of differences
+        vectors = {k_one : numpy.average([levenshtein(k_one,k_two) for k_two in names if k_two!=k_one]) for k_one in names}
+        vectors = zero_one_norm(vectors)
 
     elif args.word_vectors in ['imageability', 'familiarity']:
 
@@ -755,7 +787,9 @@ def load_vectors_two(args, experiment, n, clustered=False):
                     fam = 3.5
                 fams.append(fam)
 
-        vectors = {k_one : numpy.array([abs(l_one-l_two) for k_two, l_two in zip(names, fams) if k_two!=k_one]) for k_one, l_one in zip(names, fams)}
+        #vectors = {k_one : numpy.array([abs(l_one-l_two) for k_two, l_two in zip(names, fams) if k_two!=k_one]) for k_one, l_one in zip(names, fams)}
+        vectors = {k_one : l_one for k_one, l_one in zip(names, fams)}
+        vectors = zero_one_norm(vectors)
 
     elif 'frequency' in args.word_vectors:
         freqs = list()
@@ -765,9 +799,12 @@ def load_vectors_two(args, experiment, n, clustered=False):
             lines = [l for l in lines if len(l) > 3]
             freqs.append(len(lines))
         if args.word_vectors == 'log_frequency':
-            vectors = {k_one : numpy.array([abs(math.log(l_one)-math.log(l_two)) for k_two, l_two in zip(names, freqs) if k_two!=k_one]) for k_one, l_one in zip(names, freqs)}
+            #vectors = {k_one : numpy.array([abs(math.log(l_one)-math.log(l_two)) for k_two, l_two in zip(names, freqs) if k_two!=k_one]) for k_one, l_one in zip(names, freqs)}
+            vectors = {k_one : math.log(l_one) for k_one, l_one in zip(names, freqs)}
         else:
-            vectors = {k_one : numpy.array([abs(l_one-l_two) for k_two, l_two in zip(names, freqs) if k_two!=k_one]) for k_one, l_one in zip(names, freqs)}
+            vectors = {k_one : float(l_one) for k_one, l_one in zip(names, freqs)}
+            #vectors = {k_one : numpy.array([abs(l_one-l_two) for k_two, l_two in zip(names, freqs) if k_two!=k_one]) for k_one, l_one in zip(names, freqs)}
+        vectors = zero_one_norm(vectors)
 
     elif args.word_vectors == 'w2v':
 
@@ -836,16 +873,6 @@ def load_vectors_two(args, experiment, n, clustered=False):
                               #'middle_four',
                               'span_averaged',
                               )
-        #clustered=True
-        if clustered:
-            folder = 'clustered_{}'.format(folder)
-            relevant_indices = dict()
-            in_folder = os.path.join('clustered_sentence_selection', 
-                                      args.experiment_id, 
-                                      args.word_vectors)
-            with open(os.path.join(in_folder, 'sub-{:02}.selection'.format(n))) as i:
-                lines = [l.strip().split('\t') for l in i.readlines()]
-            idxs = {l[0] : [int(w.split(', ')[0]) for w in l[1:]] for l in lines}
         assert os.path.exists(folder)
         files = [f for f in os.listdir(folder)]
         assert len(files) in [16, 18, 32, 40]
@@ -866,8 +893,11 @@ def load_vectors_two(args, experiment, n, clustered=False):
                     vecs = numpy.array(lines[0], dtype=numpy.float64)
             entity = re.sub('sub-\d\d\_|\.vector', '', f)
             vectors[entity.replace('_', ' ')] = vecs
-    if clustered:
-        print('using ten')
-        vectors = {k : numpy.average(v[idxs[k][:10]], axis=0) for k, v in vectors.items()}
 
+    return vectors
+
+def zero_one_norm(vectors):
+    values = [v for k, v in vectors.items()]
+    values = [(v - min(values))/(max(values)-min(values)) for v in values]
+    vectors = {k[0] : val for k, val in zip(vectors.items(), values)}
     return vectors

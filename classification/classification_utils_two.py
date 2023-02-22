@@ -11,16 +11,14 @@ from scipy import stats
 from sklearn.svm import SVC
 from sklearn.linear_model import LogisticRegression, RidgeClassifierCV, RidgeClassifier
 from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import LabelEncoder
 from sklearn.multiclass import OneVsRestClassifier
 from tqdm import tqdm
 
 from plot_scripts.plot_utils import fdr, plot_time_resolved_classification
+from general_utils import split_train_test
 from io_utils import prepare_folder, LoadEEG, ExperimentInfo
 
-### Actual classification
-
-def classify(arg):
+def time_generalization_classify(arg):
 
     args = arg[0]
     experiment = arg[1]
@@ -31,62 +29,8 @@ def classify(arg):
     test_samples = list()
     test_true = list()
 
-    ### Selecting the relevant index for the trigger_to_info dictionary
-    if 'coarse' in args.analysis:
-        cat_index = 1
-    elif 'fine' in args.analysis or 'famous' in args.analysis:
-        cat_index = 2
 
-    for trig in split:
-        erps = eeg[trig]
-        if not isinstance(erps, list):
-            erps = [erps]
-        test_samples.extend(erps)
-        test_true.extend([experiment.trigger_to_info[trig][cat_index] for i in range(len(erps))])
-
-    train_samples = list()
-    train_true = list()
-    for k, erps in eeg.items():
-        if not isinstance(erps, list):
-            erps = [erps]
-        if k not in split:
-            train_samples.extend(erps)
-            train_true.extend([experiment.trigger_to_info[k][cat_index] for i in range(len(erps))])
-
-    ### Check labels
-    if args.experiment_id == 'two':
-        assert len(list(set(train_true))) == 2
-        assert len(list(set(test_true))) == 2
-        if 'coarse' in args.analysis:
-            assert 'person' in train_true
-            assert 'place' in train_true
-            assert 'person' in test_true
-            assert 'place' in test_true
-        if 'famous' in args.analysis:
-            assert 'famous' in train_true
-            assert 'familiar' in train_true
-            assert 'famous' in test_true
-            assert 'familiar' in test_true
-    elif args.experiment_id == 'one':
-        if 'coarse' in args.analysis:
-            assert len(list(set(train_true))) == 2
-            assert len(list(set(test_true))) == 2
-            assert 'person' in train_true
-            assert 'place' in train_true
-            assert 'person' in test_true
-            assert 'place' in test_true
-        if 'fine' in args.analysis:
-            if args.semantic_category == 'people':
-                assert len(list(set(train_true))) == 4
-            if args.semantic_category == 'places':
-                assert len(list(set(train_true))) == 4
-            if args.semantic_category == 'all':
-                assert len(list(set(train_true))) == 8
-
-    train_true = LabelEncoder().fit_transform(train_true)
-    test_true = LabelEncoder().fit_transform(test_true)
-    
-    train_labels = len(list(set(train_true)))
+    train_true, test_true, train_samples, test_samples = split_train_test(args, split, eeg, experiment)
 
     iteration_scores = list()
 
@@ -107,6 +51,8 @@ def classify(arg):
             t_train = train_samples.copy()
             t_test = test_samples.copy()
 
+        ### fitting a model
+
         ### Differentiating between binary and multiclass classifier
         #classifier = SVC()
         #classifier = RidgeClassifierCV(alphas=(0.1, 1.0, 10.0, 100., 1000., 10000.))
@@ -118,7 +64,89 @@ def classify(arg):
 
         ### Computing the accuracy
         accuracy = classifier.score(t_test, test_true)
+
         iteration_scores.append(accuracy)
+
+    return iteration_scores
+
+### Actual classification
+
+def classify(arg):
+
+    args = arg[0]
+    experiment = arg[1]
+    eeg = arg[2]
+    split = arg[3]
+    iteration = arg[4]
+
+    test_samples = list()
+    test_true = list()
+
+    ### Selecting the relevant index for the trigger_to_info dictionary
+    if 'coarse' in args.analysis:
+        cat_index = 1
+    elif 'fine' in args.analysis or 'famous' in args.analysis:
+        cat_index = 2
+
+    train_true, test_true, train_samples, test_samples = split_train_test(args, split, eeg, experiment, [])
+
+    if 'searchlight' not in args.analysis:
+        sample_shape = train_samples[0].shape
+        assert len(sample_shape) == 2
+        number_iterations = range(train_samples[0].shape[-1])
+
+    else:
+        number_iterations = [0]
+
+    if args.analysis == 'temporal_generalization':
+        raise RuntimeError('still to be implemented!')
+
+        for train_t in number_iterations:
+
+            iteration_scores = list()
+
+            for test_t in number_iterations:
+
+                t_train = [erp[:, train_t] for erp in train_samples]
+                t_test = [erp[:, test_t] for erp in test_samples]
+
+                ### Differentiating between binary and multiclass classifier
+                #classifier = SVC()
+                #classifier = RidgeClassifierCV(alphas=(0.1, 1.0, 10.0, 100., 1000., 10000.))
+                classifier = RidgeClassifier()
+                #classifier = RidgeClassifierCV()
+
+                ### Fitting the model on the training data
+                classifier.fit(t_train, train_true)
+
+                ### Computing the accuracy
+                accuracy = classifier.score(t_test, test_true)
+                iteration_scores.append(accuracy)
+
+    else:
+        iteration_scores = list()
+
+        for t in number_iterations:
+
+            if 'searchlight' not in args.analysis:
+                t_train = [erp[:, t] for erp in train_samples]
+                t_test = [erp[:, t] for erp in test_samples]
+            else:
+                t_train = train_samples.copy()
+                t_test = test_samples.copy()
+
+            ### Differentiating between binary and multiclass classifier
+            #classifier = SVC()
+            #classifier = RidgeClassifierCV(alphas=(0.1, 1.0, 10.0, 100., 1000., 10000.))
+            classifier = RidgeClassifier()
+            #classifier = RidgeClassifierCV()
+
+            ### Fitting the model on the training data
+            classifier.fit(t_train, train_true)
+
+            ### Computing the accuracy
+            accuracy = classifier.score(t_test, test_true)
+            iteration_scores.append(accuracy)
 
     return iteration_scores
 
@@ -130,13 +158,14 @@ def run_searchlight_classification(all_args):
     experiment = all_args[1]
     eeg = all_args[2]
     cluster = all_args[3]
-    step = all_args[4]
 
     places = list(cluster[0])
     start_time = cluster[1]
-    s_data = {k : e[places, start_time:start_time+(step*2)].flatten() for k, e in eeg.data_dict.items()}
+    end_time = cluster[2]
+    s_data = {k : e[places, start_time:end_time].flatten() for k, e in eeg.data_dict.items()}
     ### Creating the input for the classification function
     classification_inputs = [[args, experiment, s_data, split, iteration] for iteration, split in enumerate(experiment.test_splits)]
+
 
     sub_scores = list(map(classify, classification_inputs))
     final_score = numpy.average(sub_scores)

@@ -5,7 +5,7 @@ from matplotlib import pyplot
 from scipy import stats
 
 from io_utils import prepare_folder
-from feature_selection.feature_selection import feature_ranking_folder 
+#from feature_selection.feature_selection import feature_ranking_folder 
 from plot_scripts.plot_violins import plot_violins
 
 def plot_decoding_scores_comparison(args):
