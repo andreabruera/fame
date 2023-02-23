@@ -7,6 +7,7 @@ import pickle
 import re
 import scipy
 import sklearn
+import syllables
 
 from gensim.models import KeyedVectors, Word2Vec
 from scipy import stats
@@ -742,6 +743,9 @@ def load_vectors_two(args, experiment, n, clustered=False):
         #lengths = [len(w) for w in names]
         #vectors = {k_one : numpy.array([abs(l_one-l_two) for k_two, l_two in zip(names, lengths) if k_two!=k_one]) for k_one, l_one in zip(names, lengths)}
         vectors = {w : len(w) for w in names}
+        vectors = zero_one_norm(vectors)
+    elif args.word_vectors == 'syllables':
+        vectors = {w : sum([syllables.estimate(part) for part in w.split()]) for w in names}
         vectors = zero_one_norm(vectors)
 
     elif args.word_vectors == 'orthography':

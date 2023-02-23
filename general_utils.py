@@ -4,6 +4,7 @@ import scipy
 import sklearn
 
 from scipy import stats
+from skbold.preproc import ConfoundRegressor
 from sklearn.preprocessing import LabelEncoder
 
 def read_args():
@@ -159,6 +160,7 @@ def read_args():
                                  'word_length',
                                  'frequency',
                                  'log_frequency',
+                                 'syllables',
                                  ### English
                                  # Contextualized
                                  'BERT_base_en_sentence', 'BERT_large_en_sentence',
@@ -258,6 +260,8 @@ def split_train_test(args, split, eeg, experiment, comp_vectors):
     test_samples = list()
     test_true = list()
 
+    test_lengths = list()
+
     for trig in split:
         if args.analysis == 'time_resolved_rsa_encoding':
             trig = experiment.trigger_to_info[trig][0]
@@ -270,12 +274,16 @@ def split_train_test(args, split, eeg, experiment, comp_vectors):
         if args.analysis == 'time_resolved_rsa_encoding':
             test_samples.extend(vecs)
             test_true.extend(erps)
+            test_lengths.append(len(trig))
         else:
             test_samples.extend(erps)
             test_true.extend([experiment.trigger_to_info[trig][cat_index] for i in range(len(erps))])
+            test_lengths.append(len(experiment.trigger_to_info[trig][0]))
 
     train_samples = list()
     train_true = list()
+
+    train_lengths = list()
 
     for k, erps in eeg.items():
         if args.analysis == 'time_resolved_rsa_encoding':
@@ -288,10 +296,14 @@ def split_train_test(args, split, eeg, experiment, comp_vectors):
                 vecs = [comp_vectors[k]]
                 train_samples.extend(vecs)
                 train_true.extend(erps)
+                train_lengths.append(len(k))
             else:
                 train_samples.extend(erps)
                 train_true.extend([experiment.trigger_to_info[k][cat_index] for i in range(len(erps))])
+                train_lengths.append(len(experiment.trigger_to_info[k][0]))
 
+    test_samples = numpy.array(test_samples, dtype=numpy.float64)
+    train_samples = numpy.array(train_samples, dtype=numpy.float64)
     if args.analysis != 'time_resolved_rsa_encoding':
         ### Check labels
         if args.experiment_id == 'two':
@@ -330,15 +342,25 @@ def split_train_test(args, split, eeg, experiment, comp_vectors):
     else:
         train_true = numpy.array(train_true, dtype=numpy.float64)
         test_true = numpy.array(test_true, dtype=numpy.float64)
-        test_samples = numpy.array(test_samples, dtype=numpy.float64)
-        train_samples = numpy.array(train_samples, dtype=numpy.float64)
 
         assert train_samples.shape[0] == len(eeg.keys())-2
         assert len(test_samples) == 2
 
-    return train_true, test_true, train_samples, test_samples
+    train_lengths = numpy.array(train_lengths)
+    test_lengths = numpy.array(test_lengths)
 
-def evaluate_pairwise(args, train_true, test_true, train_samples, test_samples):
+    assert train_lengths.shape[0] == train_samples.shape[0]
+    assert test_lengths.shape[0] == test_samples.shape[0]
+
+    return train_true, test_true, train_samples, test_samples, train_lengths, test_lengths
+
+def evaluate_pairwise(args, train_true, test_true, train_samples, test_samples, train_lengths, test_lengths):
+    ### regress out word_length
+    if args.corrected:
+        cfr = ConfoundRegressor(confound=train_lengths, X=train_true.copy())
+        cfr.fit(train_true)
+        train_true = cfr.transform(train_true)
+    #test_true = cfr.transform(test_true)
     ### orthography uses a unique distance metric
     #if args.word_vectors == 'orthography':
     #    test_samples = [[levenshtein(tst, tr) for tr in train_samples] for tst in test_samples]
@@ -376,3 +398,44 @@ def evaluate_pairwise(args, train_true, test_true, train_samples, test_samples):
 
     return accuracy
 
+def rsa_evaluation_round(args, experiment, current_eeg, stimuli_batches, model_sims):
+
+    scores = list()
+    if args.analysis == 'time_resolved_rsa':
+        batch_corr = list()
+        for batch, model_batch in zip(stimuli_batches, model_sims):
+            ### correcting
+            if args.corrected:
+                ### removing word length
+                train_data = [current_eeg[s] for s in eeg.keys() if s not in batch]
+                #test_data = [current_eeg[s] for s in eeg.keys() if s in batch]
+                train_lengths = [len(s) for s in eeg.keys() if s not in batch]
+                #test_lengths = [len(s) for s in eeg.keys() if s in batch]
+                cfr = ConfoundRegressor(
+                                        confound=numpy.array(train_lengths), 
+                                        X=numpy.array(train_data),
+                                        cross_validate=True,
+                                        )
+                cfr.fit(numpy.array(train_data))
+                train_data = cfr.transform(numpy.array(train_data))
+                iter_current_eeg = {k : v for k, v in zip([s for s in eeg.keys() if s not in batch], train_data)}
+
+                eeg_sims = [1. - scipy.stats.pearsonr(current_eeg[k_one], iter_current_eeg[k_two])[0] for k_one in batch for k_two in eeg.keys() if k_two not in batch]
+            ### not correcting
+            else:
+                eeg_sims = [1. - scipy.stats.pearsonr(current_eeg[k_one], current_eeg[k_two])[0] for k_one in batch for k_two in batch if k_one!=k_two]
+            corr = scipy.stats.pearsonr(model_batch, eeg_sims)[0]
+            scores.append(corr)
+    if args.analysis == 'time_resolved_rsa_encoding':
+        for split in experiment.test_splits:
+            train_true, test_true, train_samples, test_samples, train_lengths, test_lengths = split_train_test(args, split, current_eeg, experiment, comp_vectors)
+            if type(test_samples[0]) in [int, float, numpy.float64]:
+                if test_samples[0] == test_samples[1]:
+                    continue
+            score = evaluate_pairwise(args, train_true, test_true, train_samples, test_samples, train_lengths, test_lengths)
+            ### subtracting .5 because it's random baseline
+            scores.append(score-.5)
+        ### calling it 'corr', but not really a corr...
+    corr = numpy.average(scores)
+
+    return corr

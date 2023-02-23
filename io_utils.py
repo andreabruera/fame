@@ -362,6 +362,7 @@ class ExperimentInfo:
 
         ### correction needs to take place only when
         ### difference is statistically significant
+        '''
 
         if stat_sig_length[1] < 0.1 and self.corrected:
             if len(test_splits[0]) == 2:
@@ -399,6 +400,10 @@ class ExperimentInfo:
         else:
             n_folds = len(test_splits)
             test_splits = random.sample(test_splits, k=min(n_folds, len(test_splits)))
+        print('using {} splits'.format(len(test_splits)))
+        '''
+        n_folds = len(test_splits)
+        test_splits = random.sample(test_splits, k=min(n_folds, len(test_splits)))
         print('using {} splits'.format(len(test_splits)))
 
         return test_splits

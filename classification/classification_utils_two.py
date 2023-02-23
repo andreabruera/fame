@@ -8,6 +8,7 @@ import sklearn
 import collections
 
 from scipy import stats
+from skbold.preproc import ConfoundRegressor
 from sklearn.svm import SVC
 from sklearn.linear_model import LogisticRegression, RidgeClassifierCV, RidgeClassifier
 from sklearn.pipeline import Pipeline
@@ -88,7 +89,7 @@ def classify(arg):
     elif 'fine' in args.analysis or 'famous' in args.analysis:
         cat_index = 2
 
-    train_true, test_true, train_samples, test_samples = split_train_test(args, split, eeg, experiment, [])
+    train_true, test_true, train_samples, test_samples, train_lengths, test_lengths = split_train_test(args, split, eeg, experiment, [])
 
     if 'searchlight' not in args.analysis:
         sample_shape = train_samples[0].shape
@@ -126,7 +127,7 @@ def classify(arg):
     else:
         iteration_scores = list()
 
-        for t in number_iterations:
+        for t_i, t in enumerate(number_iterations):
 
             if 'searchlight' not in args.analysis:
                 t_train = [erp[:, t] for erp in train_samples]
@@ -134,6 +135,12 @@ def classify(arg):
             else:
                 t_train = train_samples.copy()
                 t_test = test_samples.copy()
+            if args.corrected:
+                if t_i == 0:
+                    print('\nnow correcting for word length!\n')
+                cfr = ConfoundRegressor(confound=train_lengths, X=numpy.array(t_train.copy()))
+                cfr.fit(numpy.array(t_train))
+                t_train = cfr.transform(numpy.array(t_train))
 
             ### Differentiating between binary and multiclass classifier
             #classifier = SVC()

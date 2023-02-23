@@ -616,7 +616,7 @@ def plot_classification(args):
                             args.entities,
                             args.data_kind, 
                             #args.subsample,
-                            args.temporal_resolution,
+                            '{}ms'.format(args.temporal_resolution),
                             args.average,
                             correction))
     if args.analysis in ['time_resolved_rsa', 'time_resolved_rsa_encoding']:

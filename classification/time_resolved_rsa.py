@@ -1,8 +1,10 @@
 import numpy
 import os
+import random
 import scipy
 
 from scipy import stats
+from skbold.preproc import ConfoundRegressor
 from tqdm import tqdm
 
 from general_utils import evaluate_pairwise, split_train_test
@@ -25,6 +27,7 @@ def time_resolved_rsa(all_args):
         
     comp_vectors = load_vectors_two(args, experiment, n)
     eeg = {experiment.trigger_to_info[k][0] : v for k, v in eeg.items()}
+
 
     ### Words
     stimuli = list(eeg.keys())
@@ -60,42 +63,39 @@ def time_resolved_rsa(all_args):
     for s in stimuli:
         assert s in comp_vectors.keys()
     ### splitting into batches of jump=? to control word length
+    stimuli_batches = list()
     if args.corrected:
-        jump = 8
-        stimuli_batches = [sorted(stimuli)[i:i+jump] for i in range(0, len(stimuli), int(jump/2)) if i<=len(stimuli)-jump]
-        assert len(set([n for b in stimuli_batches for n in b])) == len(stimuli)
+        ### batches of correlation in order to correct for word length
+        batch_length = int(len(eeg.keys())/2)
+        for i in range(10):
+            stimuli_batches.append(random.sample(list(eeg.keys()), k=batch_length))
+        #jump = max(len(stimuli)/2, 4)
+        #stimuli_batches = [sorted(stimuli)[i:i+jump] for i in range(0, len(stimuli), int(jump/2)) if i<=len(stimuli)-jump]
+        #assert len(set([n for b in stimuli_batches for n in b])) == len(stimuli)
     else:
-        stimuli_batches = [stimuli]
+        stimuli_batches.append(list(eeg.keys()))
     model_sims = list()
     for batch in stimuli_batches:
-        if type(comp_vectors[stimuli[0]]) in [int, float, numpy.float64]:
-            batch_sims = [abs(comp_vectors[tst]-comp_vectors[tr]) for tr in batch for tst in batch if tr!=tst]
+        ### correcting
+        if args.corrected:
+            if type(comp_vectors[stimuli[0]]) in [int, float, numpy.float64]:
+                batch_sims = [abs(comp_vectors[tst]-comp_vectors[tr]) for tr in batch for tst in eeg.keys() if tst not in batch]
+            else:
+                batch_sims = [1. - scipy.stats.pearsonr(comp_vectors[k_one], comp_vectors[k_two])[0] for k_one in batch for k_two in eeg.keys() if k_two not in batch]
+        ### leaving data as is
         else:
-            batch_sims = [1. - scipy.stats.pearsonr(comp_vectors[k_one], comp_vectors[k_two])[0] for k_one in batch for k_two in batch if k_one!=k_two]
+            if type(comp_vectors[stimuli[0]]) in [int, float, numpy.float64]:
+                batch_sims = [abs(comp_vectors[tst]-comp_vectors[tr]) for tr in batch for tst in batch if tst!=tr]
+            else:
+                batch_sims = [1. - scipy.stats.pearsonr(comp_vectors[k_one], comp_vectors[k_two])[0] for k_one in batch for k_two in batch if k_one!=k_two]
         model_sims.append(batch_sims)
 
     if not searchlight:
         sub_scores = list()
         for t in tqdm(range(len(all_eeg.times))):
             current_eeg = {k : v[:, t] for k, v in eeg.items()}
-            scores = list()
-            if args.analysis == 'time_resolved_rsa':
-                batch_corr = list()
-                for batch, model_batch in zip(stimuli_batches, model_sims):
-                    eeg_sims = [1. - scipy.stats.pearsonr(current_eeg[k_one], current_eeg[k_two])[0] for k_one in batch for k_two in batch if k_one!=k_two]
-                    corr = scipy.stats.pearsonr(model_batch, eeg_sims)[0]
-                    scores.append(corr)
-            if args.analysis == 'time_resolved_rsa_encoding':
-                for split in experiment.test_splits:
-                    train_true, test_true, train_samples, test_samples = split_train_test(args, split, current_eeg, experiment, comp_vectors)
-                    if args.word_vectors in ['coarse_category', 'famous_familiar']:
-                        if test_samples[0] == test_samples[1]:
-                            continue
-                    score = evaluate_pairwise(args, train_true, test_true, train_samples, test_samples)
-                    ### subtracting .5 because it's random baseline
-                    scores.append(score-.5)
-                ### calling it 'corr', but not really a corr...
-            corr = numpy.average(scores)
+
+            corr = rsa_evaluation_round(args, experiment, current_eeg, stimuli_batches, model_sims)
             sub_scores.append(corr)
         out_path = prepare_folder(args)
         file_path = os.path.join(out_path, 'sub_{:02}_{}.txt'.format(n, args.word_vectors))
@@ -109,32 +109,20 @@ def time_resolved_rsa(all_args):
                 o.write('{}\t'.format(d))
     else:
         results_dict = dict()
-        #step = 8
-        #step = 26
-        #relevant_times = [t_i for t_i, t in enumerate(all_eeg.times) if t_i+(step*2)<len(all_eeg.times)][::step]
-        #explicit_times = [all_eeg.times[t] for t in relevant_times]
-        #explicit_times = [all_eeg.times[t+int(step/2)] for t in relevant_times]
-        #relevant_times = [t_i for t_i, t in enumerate(all_eeg.times) if t_i+searchlight_clusters.time_radius<len(all_eeg.times)][::searchlight_clusters.time_radius]
         tmin = -.1
         tmax = 1.2
         relevant_times = list(range(int0(tmin*10000), int0(tmax*1000), searchlight_clusters.time_radius))
-        #relevant_times = [t_i for t_i, t in enumerate(all_eeg.times) if t+(searchlight_clusters.time_radius)/1000<max(all_eeg.times)]
-        #explicit_times = [all_eeg.times[t+int(searchlight_clusters.time_radius/2)] for t in relevant_times]
 
         electrode_indices = [searchlight_clusters.neighbors[center] for center in range(128)]
-        #clusters = [(e_s, t_s) for e_s in electrode_indices for t_s in relevant_times]
-        #for cluster in clusters:
         for e_s in electrode_indices:
-            #places = list(cluster[0])
             for t in relevant_times:
                 start_time = min([t_i for t_i, t in enumerate(all_eeg.times) if t>(searchlight_clusters.time_radius/10000)])
                 end_time = max([t_i for t_i, t in enumerate(all_eeg.times) if t<=(searchlight_clusters.time_radius)/10000])+1
                 print([start_time, end_time])
-                #start_time = cluster[1]
-                #current_eeg = {k : v[places, start_time:start_time+(step*2)].flatten() for k, v in eeg.items()}
-                #current_eeg = {k : v[places, start_time:start_time+searchlight_clusters.time_radius].flatten() for k, v in eeg.items()}
                 current_eeg = {k : v[places, start_time:end_time].flatten() for k, v in eeg.items()}
-                eeg_sims = [1. - scipy.stats.pearsonr(current_eeg[k_one], current_eeg[k_two])[0] for k_one in stimuli for k_two in stimuli if k_one!=k_two]
+                if args.corrected:
+                else:
+                    eeg_sims = [1. - scipy.stats.pearsonr(current_eeg[k_one], current_eeg[k_two])[0] for k_one in stimuli for k_two in stimuli if k_one!=k_two]
                 corr = scipy.stats.pearsonr(model_sims, eeg_sims)[0]
                 results_dict[(places[0], start_time)] = corr
 
