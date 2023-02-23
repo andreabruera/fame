@@ -344,7 +344,8 @@ def evaluate_pairwise(args, train_true, test_true, train_samples, test_samples):
     #    test_samples = [[levenshtein(tst, tr) for tr in train_samples] for tst in test_samples]
     #else:
     ### single values use absolute distance
-    if type(test_samples[0]) == numpy.float64:
+    #if type(test_samples[0]) == numpy.float64:
+    if type(test_samples[0]) in [int, float, numpy.float64]:
         ### for categories, the higher the value the more similar, so we invert
         #if set(test_samples.tolist()) == set([0, 1]):
         #    test_samples = [[1 - abs(tst-tr) for tr in train_samples] for tst in test_samples]
