@@ -10,8 +10,8 @@ import sklearn
 
 from tqdm import tqdm
 
-from general_utils import read_args, prepare_folder, tfr_frequencies
-from io import ExperimentInfo, LoadEEG
+from general_utils import read_args, prepare_folder
+from io_utils import ExperimentInfo, LoadEEG, tfr_frequencies
 
 from plotting.plot_classification import plot_classification
 from plotting.plot_decoding_results_breakdown import plot_decoding_results_breakdown
@@ -20,8 +20,8 @@ from plotting.plot_decoding_scores_comparison import plot_decoding_scores_compar
 from searchlight import SearchlightClusters, join_searchlight_results, write_plot_searchlight
 from group_searchlight import group_searchlight
 
-from word_vector_enc_decoding.read_word_vectors import WordVectors, load_vectors_two
-from word_vector_enc_decoding.encoding_decoding_utils import prepare_and_test, write_enc_decoding
+from read_word_vectors import load_vectors
+from encoding_decoding_utils import prepare_and_test, write_enc_decoding
 
 from rsa import time_resolved_rsa
 from classification import run_time_resolved_classification, run_searchlight_classification 

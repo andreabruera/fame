@@ -15,6 +15,7 @@ from sklearn.cluster import KMeans, DBSCAN, SpectralClustering
 from tqdm import tqdm
 from wikipedia2vec import Wikipedia2Vec
 
+'''
 def cluster_scores(input_samples, labels):
 
     labels = sklearn.preprocessing.LabelEncoder().fit_transform(y=[cat \
@@ -129,38 +130,34 @@ class WordVectors:
         self.words = self.word_mapper(args)
 
         self.word_to_trigger = {v[0] : k for k, v in experiment.trigger_to_info.items()}
-        '''
-        if args.entities == 'categories_only':
-            self.words = {k : v for k, v in self.words.items() if self.word_to_trigger[v] > 100}
-            assert len(self.words.keys()) == 8
-        elif args.entities == 'individuals_only':
-            self.words = {k : v for k, v in self.words.items() if self.word_to_trigger[v] <= 100}
-            assert len(self.words.keys()) == 32 
-        else:
-            assert len(self.words.keys()) == 40 
+        #if args.entities == 'categories_only':
+        #    self.words = {k : v for k, v in self.words.items() if self.word_to_trigger[v] > 100}
+        #    assert len(self.words.keys()) == 8
+        #elif args.entities == 'individuals_only':
+        #    self.words = {k : v for k, v in self.words.items() if self.word_to_trigger[v] <= 100}
+        #    assert len(self.words.keys()) == 32 
+        #else:
+        #    assert len(self.words.keys()) == 40 
 
         ### Restricting to people or places only
-        if args.semantic_category == 'people':
-            self.words = {k : v for k, v in self.words.items() if experiment.trigger_to_info[self.word_to_trigger[v]][1] == 'persona'}
-            assert len(self.words.keys()) in [16, 20]
+        #if args.semantic_category == 'people':
+        #    self.words = {k : v for k, v in self.words.items() if experiment.trigger_to_info[self.word_to_trigger[v]][1] == 'persona'}
+        #    assert len(self.words.keys()) in [16, 20]
 
-        elif args.semantic_category == 'places':
-            self.words = {k : v for k, v in self.words.items() if experiment.trigger_to_info[self.word_to_trigger[v]][1] == 'luogo'}
-            assert len(self.words.keys()) in [16, 20]
-        '''
+        #elif args.semantic_category == 'places':
+        #    self.words = {k : v for k, v in self.words.items() if experiment.trigger_to_info[self.word_to_trigger[v]][1] == 'luogo'}
+        #    assert len(self.words.keys()) in [16, 20]
         #self.words = list(self.word_to_trigger.keys())
         self.words = {k : v for k, v in self.words.items() if v in [v[0] for v in self.experiment.trigger_to_info.values()]}
         assert len(self.words.keys()) in [16, 20, 32, 40]
 
-        '''
         ## Fix for subject 21, who had already visited South Africa
-        if self.sub == 21:
-            del self.words['Sud Africa']
-            self.words['Canada'] = ['Canada']
-        elif self.sub == 22:
-            del self.words['Piramidi di Giza']
-            self.words['Machu Picchu'] = ['Macchu Picchu']
-        '''
+        #if self.sub == 21:
+        #    del self.words['Sud Africa']
+        #    self.words['Canada'] = ['Canada']
+        #elif self.sub == 22:
+        #    del self.words['Piramidi di Giza']
+        #    self.words['Machu Picchu'] = ['Macchu Picchu']
             
         #print(self.words)
         self.vectors = self.read_vectors(args)
@@ -172,7 +169,7 @@ class WordVectors:
         os.makedirs(cluster_file_path, exist_ok=True)
         cluster_file_path  = os.path.join(cluster_file_path, \
                              '{}_kmeans_cluster.scores'.format(\
-                                             args.word_vectors))
+                                             args.input_target_model))
         self.ordered_words, self.combs, self.pairwise_similarities = self.compute_pairwise()
 
         if not os.path.exists(cluster_file_path):
@@ -227,42 +224,40 @@ class WordVectors:
 
     def read_vectors(self, args):
     
-        if args.word_vectors == 'gpt2':
+        if args.input_target_model == 'gpt2':
             vectors = self.read_gpt2(args)
-        if args.word_vectors == 'bert' or \
-        args.word_vectors == 'ernie':
+        if args.input_target_model == 'bert' or \
+        args.input_target_model == 'ernie':
             vectors = self.read_bert(args)
-        if args.word_vectors == 'elmo':
+        if args.input_target_model == 'elmo':
             vectors = self.read_elmo(args)
-        if args.word_vectors == 'w2v':
+        if args.input_target_model == 'w2v':
             vectors = self.read_w2v(args)
-        if args.word_vectors == 'it_w2v':
+        if args.input_target_model == 'it_w2v':
             vectors = self.read_it_w2v(args)
-        if args.word_vectors == 'transe':
+        if args.input_target_model == 'transe':
             vectors = self.read_transe(args)
-        if args.word_vectors == 'wikipedia2vec':
+        if args.input_target_model == 'wikipedia2vec':
             vectors = self.read_wikipedia2vec(args)
-        if args.word_vectors == 'it_wikipedia2vec':
+        if args.input_target_model == 'it_wikipedia2vec':
             vectors = self.read_it_wikipedia2vec(args)
-        if 'BERT' in args.word_vectors or \
-                'LUKE' in args.word_vectors or \
-                'ELMO' in args.word_vectors or \
-                'GPT' in args.word_vectors:
+        if 'BERT' in args.input_target_model or \
+                'LUKE' in args.input_target_model or \
+                'ELMO' in args.input_target_model or \
+                'GPT' in args.input_target_model:
             vectors = self.read_BERT(args)
 
-        '''
         ### Vector isotropy correction as in Mu & Viswanath 2018
-        average = numpy.average([v for k, v in vectors.items()], axis=0)
-        vectors = {k : v-average for k, v in vectors.items()}
-        pca = sklearn.decomposition.PCA(n_components=0.99)
-        pca.fit([v for k, v in vectors.items()])
-        pca_component = numpy.zeros(numpy.array([v for k,v in vectors.items()]).shape)
-        for i in range(4):
-            zero = pca.components_[i]
-            pca_component += (numpy.array([v for k, v in vectors.items()]) * zero.T)*zero
-        vectors = {kv[0] : kv[1]-pca_vec for kv, pca_vec in zip(vectors.items(), pca_component)}
+        #average = numpy.average([v for k, v in vectors.items()], axis=0)
+        #vectors = {k : v-average for k, v in vectors.items()}
+        #pca = sklearn.decomposition.PCA(n_components=0.99)
+        #pca.fit([v for k, v in vectors.items()])
+        #pca_component = numpy.zeros(numpy.array([v for k,v in vectors.items()]).shape)
+        #for i in range(4):
+        #    zero = pca.components_[i]
+        #    pca_component += (numpy.array([v for k, v in vectors.items()]) * zero.T)*zero
+        #vectors = {kv[0] : kv[1]-pca_vec for kv, pca_vec in zip(vectors.items(), pca_component)}
         #vectors = {kv[0] : pca_vec for kv, pca_vec in zip(vectors.items(), pca_component)}
-        '''
         if args.wv_dim_reduction != 'no_dim_reduction':
             amount = int(args.wv_dim_reduction[-2:])/100
             pca = sklearn.decomposition.PCA(n_components=amount)
@@ -292,21 +287,21 @@ class WordVectors:
         print('Now reading word vectors...')
         for new, original in tqdm(self.words.items()):
             if self.sub == '':
-                file_name = os.path.join('word_vectors', args.word_vectors, \
+                file_name = os.path.join('word_vectors', args.input_target_model, \
                                          args.experiment_id, \
                                          '{}.vec'.format(original))
             else:
-                file_name = os.path.join('word_vectors', args.word_vectors, \
+                file_name = os.path.join('word_vectors', args.input_target_model, \
                                          args.experiment_id, \
                                          'sub-{:02}'.format(self.sub), \
                                          '{}.vec'.format(new))
             with open(file_name) as i:
                 lines = [l.strip().split('\t') for l in i.readlines()]
-            if 'ELMO' in args.word_vectors:
+            if 'ELMO' in args.input_target_model:
                 lines = lines[-1]
                 current_vec = numpy.array(lines, dtype=numpy.double)
-            elif 'BERT' in args.word_vectors or 'LUKE' in args.word_vectors:
-                if 'large' in args.word_vectors:
+            elif 'BERT' in args.input_target_model or 'LUKE' in args.input_target_model:
+                if 'large' in args.input_target_model:
                     #lines = lines[14:18]
                     lines = lines[-8:]
                 else:
@@ -315,13 +310,13 @@ class WordVectors:
                 current_vec = numpy.array(lines, dtype=numpy.double)
                 current_vec = numpy.average(current_vec, axis=0)
 
-            if 'BERT' in args.word_vectors or 'LUKE' in args.word_vectors:
-                if not 'large' in args.word_vectors:
+            if 'BERT' in args.input_target_model or 'LUKE' in args.input_target_model:
+                if not 'large' in args.input_target_model:
                     assert current_vec.shape == (768, )
                 else:
                     assert current_vec.shape == (1024, )
-            elif 'ELMO' in args.word_vectors:
-                if not 'original' in args.word_vectors:
+            elif 'ELMO' in args.input_target_model:
+                if not 'original' in args.input_target_model:
                     assert current_vec.shape == (256, )
                 else:
                     assert current_vec.shape == (1024, )
@@ -596,7 +591,7 @@ class WordVectors:
     def read_bert(self, args):
 
         ### Loading pickle if possible
-        pickle_file_name = os.path.join('word_vectors', args.word_vectors, \
+        pickle_file_name = os.path.join('word_vectors', args.input_target_model, \
                                         'layer_{}_pickle_unmasked.pkl'.format(\
                                         args.layer))
         if os.path.exists(pickle_file_name):
@@ -610,7 +605,7 @@ class WordVectors:
             for new, original in tqdm(self.words.items()):
                 current_word_vectors = list()
 
-                file_name = os.path.join('word_vectors', args.word_vectors, \
+                file_name = os.path.join('word_vectors', args.input_target_model, \
                                          args.extraction_method, \
                                          '{}.vec'.format(new.replace(' ', '_')))
                 with open(file_name) as i:
@@ -681,6 +676,7 @@ class WordVectors:
                 eeg_mapper[name] = l
 
         return eeg_mapper
+'''
 
 def levenshtein(seq1, seq2):
     size_x = len(seq1) + 1
@@ -708,10 +704,10 @@ def levenshtein(seq1, seq2):
     #print (matrix)
     return (matrix[size_x - 1, size_y - 1])
 
-def load_vectors_two(args, experiment, n, clustered=False):
+def load_vectors(args, experiment, n, clustered=False):
 
     names = [v[0] for v in experiment.trigger_to_info.values()]
-    if args.word_vectors == 'ceiling':
+    if args.input_target_model == 'ceiling':
         ceiling = dict()
         for n_ceiling in range(1, 34):
             eeg_data_ceiling = LoadEEG(args, experiment, n_ceiling)
@@ -724,14 +720,14 @@ def load_vectors_two(args, experiment, n, clustered=False):
         comp_vectors = {k : numpy.average([vec for vec_i, vec in enumerate(v) if vec_i!=n-1], axis=0) for k, v in ceiling.items()}
         comp_vectors = {experiment.trigger_to_info[k][0] : v for k, v in comp_vectors.items()}
 
-    elif args.word_vectors in ['coarse_category', 'famous_familiar', 'fine_category']:
-        if args.word_vectors == 'coarse_category':
+    elif args.input_target_model in ['coarse_category', 'famous_familiar', 'fine_category']:
+        if args.input_target_model == 'coarse_category':
             categories = {v[0] : v[1] for v in experiment.trigger_to_info.values()}
-        elif args.word_vectors == 'famous_familiar':
+        elif args.input_target_model == 'famous_familiar':
             if args.experiment_id == 'one':
                 raise RuntimeError('There is no famous_familiar distinction for this experiment!')
             categories = {v[0] : v[2] for v in experiment.trigger_to_info.values()}
-        elif args.word_vectors == 'fine_category':
+        elif args.input_target_model == 'fine_category':
             if args.experiment_id == 'two':
                 raise RuntimeError('There is no famous_familiar distinction for this experiment!')
             categories = {v[0] : v[2] for v in experiment.trigger_to_info.values()}
@@ -739,23 +735,23 @@ def load_vectors_two(args, experiment, n, clustered=False):
         sorted_categories = sorted(set(categories.values()))
         vectors = {w : sorted_categories.index(categories[w]) for w in names}
 
-    elif args.word_vectors == 'word_length':
+    elif args.input_target_model == 'word_length':
         #lengths = [len(w) for w in names]
         #vectors = {k_one : numpy.array([abs(l_one-l_two) for k_two, l_two in zip(names, lengths) if k_two!=k_one]) for k_one, l_one in zip(names, lengths)}
         vectors = {w : len(w) for w in names}
         vectors = zero_one_norm(vectors)
-    elif args.word_vectors == 'syllables':
+    elif args.input_target_model == 'syllables':
         vectors = {w : sum([syllables.estimate(part) for part in w.split()]) for w in names}
         vectors = zero_one_norm(vectors)
 
-    elif args.word_vectors == 'orthography':
+    elif args.input_target_model == 'orthography':
         ### vector of differences
         #vectors = {k_one : numpy.array([levenshtein(k_one,k_two) for k_two in names if k_two!=k_one]) for k_one in names}
         ### average of differences
         vectors = {k_one : numpy.average([levenshtein(k_one,k_two) for k_two in names if k_two!=k_one]) for k_one in names}
         vectors = zero_one_norm(vectors)
 
-    elif args.word_vectors in ['imageability', 'familiarity']:
+    elif args.input_target_model in ['imageability', 'familiarity']:
 
         fams = list()
         if args.experiment_id == 'two' and args.semantic_category == 'familiar':
@@ -775,7 +771,7 @@ def load_vectors_two(args, experiment, n, clustered=False):
             fams = [fams_dict[n] for n in names]
         else:
             filename = os.path.join('lab','stimuli',
-                                    '{}_ratings_experiment.csv'.format(args.word_vectors))
+                                    '{}_ratings_experiment.csv'.format(args.input_target_model))
             with open(filename) as i:
                 lines = [l.strip().split('\t')[1:] for l in i.readlines()]
             assert len(names) <= len(lines[0])
@@ -795,14 +791,14 @@ def load_vectors_two(args, experiment, n, clustered=False):
         vectors = {k_one : l_one for k_one, l_one in zip(names, fams)}
         vectors = zero_one_norm(vectors)
 
-    elif 'frequency' in args.word_vectors:
+    elif 'frequency' in args.input_target_model:
         freqs = list()
         for k in names:
             with open(os.path.join('entity_sentences_{}_from_all_corpora'.format(args.experiment_id), 'it', '{}.sentences'.format(k))) as i:
                 lines = [l.strip() for l in i.readlines()]
             lines = [l for l in lines if len(l) > 3]
             freqs.append(len(lines))
-        if args.word_vectors == 'log_frequency':
+        if args.input_target_model == 'log_frequency':
             #vectors = {k_one : numpy.array([abs(math.log(l_one)-math.log(l_two)) for k_two, l_two in zip(names, freqs) if k_two!=k_one]) for k_one, l_one in zip(names, freqs)}
             vectors = {k_one : math.log(l_one) for k_one, l_one in zip(names, freqs)}
         else:
@@ -810,7 +806,7 @@ def load_vectors_two(args, experiment, n, clustered=False):
             #vectors = {k_one : numpy.array([abs(l_one-l_two) for k_two, l_two in zip(names, freqs) if k_two!=k_one]) for k_one, l_one in zip(names, freqs)}
         vectors = zero_one_norm(vectors)
 
-    elif args.word_vectors == 'w2v':
+    elif args.input_target_model == 'w2v':
 
         w2v_model = Word2Vec.load('/import/cogsci/andrea/dataset/word_vectors/w2v_it_wexea/w2v_it_wexea')
 
@@ -853,14 +849,14 @@ def load_vectors_two(args, experiment, n, clustered=False):
             
             vectors[original] = w_vec
 
-    elif args.word_vectors in [ 
+    elif args.input_target_model in [ 
                                'gpt2', 
                                'xlm-roberta-large',
                                'MBERT',
                              ]:
         ### reading file
-        #with open('exp_{}_{}_wikipedia_vectors.tsv'.format(args.experiment_id, args.word_vectors)) as i:
-        with open('exp_{}_{}_vectors.tsv'.format(args.experiment_id, args.word_vectors)) as i:
+        #with open('exp_{}_{}_wikipedia_vectors.tsv'.format(args.experiment_id, args.input_target_model)) as i:
+        with open('exp_{}_{}_vectors.tsv'.format(args.experiment_id, args.input_target_model)) as i:
             lines = [l.strip().split('\t') for l in i.readlines()][1:]
         vectors = {l[0] : numpy.array(l[1:], dtype=numpy.float64) for l in lines}
         for k, v in vectors.items():
@@ -870,7 +866,7 @@ def load_vectors_two(args, experiment, n, clustered=False):
         vectors = dict()
         folder = os.path.join('word_vectors_10_2022', 
                               args.experiment_id,
-                              args.word_vectors,
+                              args.input_target_model,
                               'top_four', 
                               #'top_six', 
                               #'first_four', 

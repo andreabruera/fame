@@ -15,9 +15,8 @@ from sklearn.pipeline import Pipeline
 from sklearn.multiclass import OneVsRestClassifier
 from tqdm import tqdm
 
-from plotting import fdr, plot_time_resolved_classification
 from general_utils import split_train_test, prepare_folder 
-from io import LoadEEG, ExperimentInfo
+from io_utils import LoadEEG, ExperimentInfo
 
 def time_generalization_classify(arg):
 

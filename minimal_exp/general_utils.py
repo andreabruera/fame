@@ -1,5 +1,6 @@
 import argparse
 import numpy
+import os
 import scipy
 import sklearn
 
@@ -235,6 +236,12 @@ def check_args(args):
         if args.semantic_category_two in ['individual', 'category']:
             marker = True
             message = 'experiment two does not distinguish between individuals and categories!'
+    if args.input_target_model == 'coarse_category' and args.semantic_category_one in ['person', 'place']:
+        marker = True
+        message = 'wrong model and semantic category!'
+    if args.input_target_model == 'famous_familiar' and args.semantic_category_one in ['famous', 'familiar']:
+        marker = True
+        message = 'wrong model and semantic category!'
     if marker:
         raise RuntimeError(message)
 
@@ -242,10 +249,13 @@ def split_train_test(args, split, eeg, experiment, comp_vectors):
 
     ### Selecting the relevant index 
     ### for the trigger_to_info dictionary
-    if 'coarse' in args.analysis:
+    if args.input_target_model == 'coarse_category':
         cat_index = 1
-    elif 'fine' in args.analysis or 'famous' in args.analysis:
+    if args.input_target_model == 'fine_category':
         cat_index = 2
+    if args.input_target_model == 'famous_familiar':
+        cat_index = 2
+
 
     test_samples = list()
     test_true = list()
@@ -253,15 +263,15 @@ def split_train_test(args, split, eeg, experiment, comp_vectors):
     test_lengths = list()
 
     for trig in split:
-        if args.analysis == 'time_resolved_rsa_encoding':
+        if args.mapping_direction != 'correlation':
             trig = experiment.trigger_to_info[trig][0]
             vecs = comp_vectors[trig]
         erps = eeg[trig]
         if not isinstance(erps, list):
             erps = [erps]
-            if args.analysis == 'time_resolved_rsa_encoding':
+            if args.mapping_direction != 'correlation':
                 vecs = [vecs]
-        if args.analysis == 'time_resolved_rsa_encoding':
+        if args.mapping_direction != 'correlation':
             test_samples.extend(vecs)
             test_true.extend(erps)
             test_lengths.append(len(trig))
@@ -276,12 +286,12 @@ def split_train_test(args, split, eeg, experiment, comp_vectors):
     train_lengths = list()
 
     for k, erps in eeg.items():
-        if args.analysis == 'time_resolved_rsa_encoding':
+        if args.mapping_direction != 'correlation':
             k = {v[0] : k for k, v in experiment.trigger_to_info.items()}[k]
         if not isinstance(erps, list):
             erps = [erps]
         if k not in split:
-            if args.analysis == 'time_resolved_rsa_encoding':
+            if args.mapping_direction != 'correlation':
                 k = experiment.trigger_to_info[k][0]
                 vecs = [comp_vectors[k]]
                 train_samples.extend(vecs)
@@ -294,30 +304,30 @@ def split_train_test(args, split, eeg, experiment, comp_vectors):
 
     test_samples = numpy.array(test_samples, dtype=numpy.float64)
     train_samples = numpy.array(train_samples, dtype=numpy.float64)
-    if args.analysis != 'time_resolved_rsa_encoding':
+    if args.mapping_direction == 'correlation':
         ### Check labels
         if args.experiment_id == 'two':
             assert len(list(set(train_true))) == 2
             assert len(list(set(test_true))) == 2
-            if 'coarse' in args.analysis:
+            if args.input_target_model == 'coarse_category':
                 assert 'person' in train_true
                 assert 'place' in train_true
                 assert 'person' in test_true
                 assert 'place' in test_true
-            if 'famous' in args.analysis:
+            if args.input_target_model == 'famous_familiar':
                 assert 'famous' in train_true
                 assert 'familiar' in train_true
                 assert 'famous' in test_true
                 assert 'familiar' in test_true
         elif args.experiment_id == 'one':
-            if 'coarse' in args.analysis:
+            if args.input_target_model == 'coarse_category':
                 assert len(list(set(train_true))) == 2
                 assert len(list(set(test_true))) == 2
                 assert 'person' in train_true
                 assert 'place' in train_true
                 assert 'person' in test_true
                 assert 'place' in test_true
-            if 'fine' in args.analysis:
+            if args.input_target_model == 'fine_category':
                 if args.semantic_category == 'people':
                     assert len(list(set(train_true))) == 4
                 if args.semantic_category == 'places':
@@ -358,8 +368,13 @@ def evaluate_pairwise(args, train_true, test_true, train_samples, test_samples, 
     ### NB: the higher the value, the more similar the items!
     else:
         test_samples = [[scipy.stats.pearsonr(tst, tr)[0] for tr in train_samples] for tst in test_samples]
-    ### Encoding targets (brain images)
-    test_samples = [numpy.sum([t*corrs[t_i] for t_i, t in enumerate(train_true)], axis=0) for corrs in test_samples]
+    if args.mapping_direction == 'encoding':
+        ### Encoding targets (brain images)
+        test_samples = [numpy.sum([t*corrs[t_i] for t_i, t in enumerate(train_true)], axis=0) for corrs in test_samples]
+
+    elif args.mapping_direction == 'decoding':
+        ### test_samples = model correlations
+        test_true = [[scipy.stats.pearsonr(tst, tr)[0] for tr in train_true] for tst in test_true]
 
     wrong = 0.
     for idx_one, idx_two in [(0, 1), (1, 0)]:
@@ -377,7 +392,7 @@ def evaluate_pairwise(args, train_true, test_true, train_samples, test_samples, 
 
     return accuracy
 
-def rsa_evaluation_round(args, experiment, current_eeg, stimuli_batches, model_sims):
+def rsa_evaluation_round(args, experiment, current_eeg, stimuli_batches, model_sims, comp_vectors):
 
     scores = list()
 
@@ -392,7 +407,7 @@ def rsa_evaluation_round(args, experiment, current_eeg, stimuli_batches, model_s
             score = evaluate_pairwise(args, train_true, test_true, train_samples, test_samples, train_lengths, test_lengths)
             scores.append(score)
     ### RSA
-    elif args.mapping_direction == 'rsa':
+    elif args.mapping_direction == 'correlation':
 
         batch_corr = list()
         for batch, model_batch in zip(stimuli_batches, model_sims):
@@ -420,27 +435,6 @@ def rsa_evaluation_round(args, experiment, current_eeg, stimuli_batches, model_s
 
     return corr
 
-def tfr_frequencies(args):
-    ### Setting up each frequency band
-    if args.data_kind == 'alpha':
-        frequencies = list(range(8, 15))
-    elif args.data_kind == 'beta':
-        frequencies = list(range(14, 31))
-    elif args.data_kind == 'lower_gamma':
-        frequencies = list(range(30, 51))
-    elif args.data_kind == 'higher_gamma':
-        frequencies = list(range(50, 81))
-    elif args.data_kind == 'delta':
-        frequencies = list(range(1, 5)) + [0.5]
-    elif args.data_kind == 'theta':
-        frequencies = list(range(4, 9))
-    #elif args.data_kind == ('erp'):
-    else:
-        frequencies = 'na'
-    frequencies = numpy.array(frequencies)
-
-    return frequencies
-
 def prepare_folder(args):
 
     out_path = os.path.join(
@@ -448,12 +442,12 @@ def prepare_folder(args):
                             args.experiment_id, 
                             args.data_kind, 
                             args.analysis,
-                            args.entities, 
-                            #args.subsample, 
+                            args.mapping_model,
+                            args.mapping_direction,
                             '{}ms'.format(args.temporal_resolution),
                             'average_{}'.format(args.average),
-                            args.semantic_category,
-                            'no_dim_reduction',
+                            args.semantic_category_one,
+                            args.semantic_category_two,
                              )
     os.makedirs(out_path, exist_ok=True)
 

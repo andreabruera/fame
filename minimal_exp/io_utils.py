@@ -19,6 +19,27 @@ from tqdm import tqdm
 from lab.utils import read_words, read_trigger_ids, select_words
 from searchlight import SearchlightClusters
 
+def tfr_frequencies(args):
+    ### Setting up each frequency band
+    if args.data_kind == 'alpha':
+        frequencies = list(range(8, 15))
+    elif args.data_kind == 'beta':
+        frequencies = list(range(14, 31))
+    elif args.data_kind == 'lower_gamma':
+        frequencies = list(range(30, 51))
+    elif args.data_kind == 'higher_gamma':
+        frequencies = list(range(50, 81))
+    elif args.data_kind == 'delta':
+        frequencies = list(range(1, 5)) + [0.5]
+    elif args.data_kind == 'theta':
+        frequencies = list(range(4, 9))
+    #elif args.data_kind == ('erp'):
+    else:
+        frequencies = 'na'
+    frequencies = numpy.array(frequencies)
+
+    return frequencies
+
 class ExperimentInfo:
 
     def __init__(self, args, subject=1):
@@ -151,13 +172,8 @@ class ExperimentInfo:
         all_combs = list(itertools.combinations(self.trigger_to_info.keys(), r=2))
 
         ### removing useless leave-two-out splits for people/places
-        if self.semantic_category_one != 'all':
-            all_combs = [c for c in all_combs if self.trigger_to_info[c[0]][1]!=self.trigger_to_info[c[1]][1]]
-        if self.semantic_category_two in ['famous', 'familiar']:
-            all_combs = [c for c in all_combs if self.trigger_to_info[c[0]][2]!=self.trigger_to_info[c[1]][2]]
 
         return all_combs
-
 
     def OLD_generate_test_splits(self):
 

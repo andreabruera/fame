@@ -16,7 +16,7 @@ from matplotlib import pyplot
 from tqdm import tqdm
 
 from general_utils import prepare_folder
-from io import ExperimentInfo, LoadEEG
+from io_utils import ExperimentInfo, LoadEEG
 from searchlight import SearchlightClusters
 
 def group_searchlight(args):

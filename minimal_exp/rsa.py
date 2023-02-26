@@ -8,7 +8,7 @@ from skbold.preproc import ConfoundRegressor
 from tqdm import tqdm
 
 from general_utils import evaluate_pairwise, rsa_evaluation_round, prepare_folder
-from io import ExperimentInfo, LoadEEG
+from io_utils import ExperimentInfo, LoadEEG
 from read_word_vectors import load_vectors
 from searchlight import SearchlightClusters
 
@@ -30,7 +30,7 @@ def time_resolved_rsa(all_args):
 
     ### Words
     stimuli = list(eeg.keys())
-    if args.experiment_id == 'two' and args.word_vectors == 'ceiling':
+    if args.experiment_id == 'two' and args.input_target_model == 'ceiling':
         stimuli = [s for s in stimuli if s in comp_vectors.keys()]
     for s in stimuli:
         assert s in comp_vectors.keys()
@@ -51,10 +51,10 @@ def time_resolved_rsa(all_args):
         for t in tqdm(range(len(all_eeg.times))):
             current_eeg = {k : v[:, t] for k, v in eeg.items()}
 
-            corr = rsa_evaluation_round(args, experiment, current_eeg, stimuli_batches, model_sims)
+            corr = rsa_evaluation_round(args, experiment, current_eeg, stimuli_batches, model_sims, comp_vectors)
             sub_scores.append(corr)
         out_path = prepare_folder(args)
-        file_path = os.path.join(out_path, 'sub_{:02}_{}.txt'.format(n, args.word_vectors))
+        file_path = os.path.join(out_path, 'sub_{:02}_{}.txt'.format(n, args.input_target_model))
         correction = 'corrected' if args.corrected else 'uncorrected'
         file_path = file_path.replace('.txt', '_{}_scores.txt'.format(correction))
         with open(os.path.join(file_path), 'w') as o:
@@ -95,7 +95,7 @@ def time_resolved_rsa(all_args):
 
         out_file = os.path.join(
                                 output_folder, 
-                  '{}_sub-{:02}.rsa'.format(args.word_vectors, n)
+                  '{}_sub-{:02}.rsa'.format(args.input_target_model, n)
                   )
         if searchlight:
             out_file = out_file.replace(
