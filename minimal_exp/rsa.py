@@ -7,10 +7,10 @@ from scipy import stats
 from skbold.preproc import ConfoundRegressor
 from tqdm import tqdm
 
-from general_utils import evaluate_pairwise, rsa_evaluation_round
-from io_utils import ExperimentInfo, LoadEEG, prepare_folder
-from word_vector_enc_decoding.read_word_vectors import WordVectors, load_vectors_two
-from searchlight.searchlight_utils import SearchlightClusters
+from general_utils import evaluate_pairwise, rsa_evaluation_round, prepare_folder
+from io import ExperimentInfo, LoadEEG
+from read_word_vectors import load_vectors
+from searchlight import SearchlightClusters
 
 def time_resolved_rsa(all_args):
 
@@ -25,7 +25,7 @@ def time_resolved_rsa(all_args):
     all_eeg = LoadEEG(args, experiment, n)
     eeg = all_eeg.data_dict
         
-    comp_vectors = load_vectors_two(args, experiment, n)
+    comp_vectors = load_vectors(args, experiment, n)
     eeg = {experiment.trigger_to_info[k][0] : v for k, v in eeg.items()}
 
     ### Words

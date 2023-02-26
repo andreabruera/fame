@@ -1,0 +1,17 @@
+Word	Coarse category	Fine category	Trigger	WikiDataID
+Barack Obama	persona	un politico	101	Q76	
+Hillary Clinton	persona	una politica	102	Q6294
+Sigmund Freud	persona	uno scrittore	103	Q9215
+J.K. Rowling	persona	una scrittrice	104	Q34660
+Freddie Mercury	persona	un musicista	105	Q15869
+Britney Spears	persona	una musicista	106	Q11975
+Scarlett Johansson	persona	un'attrice	107	Q34436
+Robert De Niro	persona	un attore	108	Q36949
+Israele	luogo	uno stato	109	Q801
+Sud Africa	luogo	uno stato	110	Q258
+New York	luogo	una citta'	111	Q60
+Rio De Janeiro	luogo	una citta'	112	Q8678
+Cascate del Niagara	luogo	una cascata	113	Q34221
+Mar dei Caraibi	luogo	un mare	114	Q1247
+Muraglia Cinese	luogo	un monumento	115	Q12501
+Piramidi di Giza	luogo	un monumento	116	Q37200

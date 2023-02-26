@@ -17,46 +17,7 @@ from scipy import stats
 from tqdm import tqdm
 
 from lab.utils import read_words, read_trigger_ids, select_words
-from searchlight.searchlight_utils import SearchlightClusters
-
-def tfr_frequencies(args):
-    ### Setting up each frequency band
-    if args.data_kind == 'alpha':
-        frequencies = list(range(8, 15))
-    elif args.data_kind == 'beta':
-        frequencies = list(range(14, 31))
-    elif args.data_kind == 'lower_gamma':
-        frequencies = list(range(30, 51))
-    elif args.data_kind == 'higher_gamma':
-        frequencies = list(range(50, 81))
-    elif args.data_kind == 'delta':
-        frequencies = list(range(1, 5)) + [0.5]
-    elif args.data_kind == 'theta':
-        frequencies = list(range(4, 9))
-    #elif args.data_kind == ('erp'):
-    else:
-        frequencies = 'na'
-    frequencies = numpy.array(frequencies)
-
-    return frequencies
-
-def prepare_folder(args):
-
-    out_path = os.path.join(
-                            'results', 
-                            args.experiment_id, 
-                            args.data_kind, 
-                            args.analysis,
-                            args.entities, 
-                            #args.subsample, 
-                            '{}ms'.format(args.temporal_resolution),
-                            'average_{}'.format(args.average),
-                            args.semantic_category,
-                            'no_dim_reduction',
-                             )
-    os.makedirs(out_path, exist_ok=True)
-
-    return out_path
+from searchlight import SearchlightClusters
 
 class ExperimentInfo:
 
@@ -64,8 +25,10 @@ class ExperimentInfo:
         
         self.experiment_id = args.experiment_id
         self.analysis = args.analysis
-        self.entities = args.entities
-        self.semantic_category = args.semantic_category
+        self.mapping_model = args.mapping_model
+        self.mapping_direction = args.mapping_model
+        self.semantic_category_one = args.semantic_category_one
+        self.semantic_category_two = args.semantic_category_two
         self.data_folder = args.data_folder
         self.corrected = args.corrected
         self.runs = 24
@@ -73,8 +36,7 @@ class ExperimentInfo:
         self.current_subject = subject
         self.eeg_paths = self.generate_eeg_paths(args)
         self.events_log, self.trigger_to_info = self.read_events_log()
-        if self.analysis not in ['time_resolved_rsa', 'rsa_searchlight']:
-            self.test_splits = self.generate_test_splits()
+        self.test_splits = self.generate_test_splits()
 
     def generate_eeg_paths(self, args):
         eeg_paths = dict()
@@ -164,201 +126,197 @@ class ExperimentInfo:
 
         ### Filtering trig_to_info as required
 
-        ### No correction
-        if self.semantic_category == 'all':
+        ### first distinction: people/places
+        if self.semantic_category_one == 'all':
             pass
-        ### Only a nested sub-class
         else:
-            if self.semantic_category in ['people', 'places']:
-                cat_index = 1
-                filter_word = 'person' if self.semantic_category=='people' else 'place'
-            elif self.semantic_category in ['famous', 'familiar']:
-                cat_index = 2
-                filter_word = '{}'.format(self.semantic_category)
-            trig_to_info = {k : v for k, v in trig_to_info.items() if v[cat_index]==filter_word}
-        if self.entities in ['people_only', 'places_only']:
-            if self.experiment_id == 'one':
-                raise RuntimeError('For experiment one there is no people/place only entities choice!')
-            else:
-                cat_index = 1
-                filter_word = 'person' if self.entities=='people_only' else 'place'
-                trig_to_info = {k : v for k, v in trig_to_info.items() if v[cat_index]==filter_word}
+            trig_to_info = {k : v for k, v in trig_to_info.items() if v[1]==self.semantic_category_one}
 
-        ### Using only individuals (experiment one)
-        if self.experiment_id == 'one':
-            if self.entities == 'individuals_only':
-                trig_to_info = {k : v for k, v in trig_to_info.items() if k<=100}
+        ### second subdivision famous/familiar or individuals/categories
+        if self.semantic_category_two == 'all':
+            pass
+        else:
+            if self.experiment_id == 'two':
+                trig_to_info = {k : v for k, v in trig_to_info.items() if v[2]==self.semantic_category_two}
+            elif self.experiment_id == 'one':
+                if self.semantic_category_two == 'individual':
+                    trig_to_info = {k : v for k, v in trig_to_info.items90 if k<=100}
+                elif self.semantic_category_two == 'category':
+                    trig_to_info = {k : v for k, v in trig_to_info.items() if k>100}
 
         return full_log, trig_to_info
 
     def generate_test_splits(self):
 
-        if self.analysis == 'time_resolved_rsa_encoding':
-           test_splits = list(itertools.combinations(self.trigger_to_info.keys(), 2))
-           stat_sig_length = (0.05, 0.05)
+        all_combs = list(itertools.combinations(self.trigger_to_info.keys(), r=2))
 
-        else:
+        ### removing useless leave-two-out splits for people/places
+        if self.semantic_category_one != 'all':
+            all_combs = [c for c in all_combs if self.trigger_to_info[c[0]][1]!=self.trigger_to_info[c[1]][1]]
+        if self.semantic_category_two in ['famous', 'familiar']:
+            all_combs = [c for c in all_combs if self.trigger_to_info[c[0]][2]!=self.trigger_to_info[c[1]][2]]
 
-            ### Experiment two, somewhat easier
-            ### as there are always two classes
-            if self.experiment_id == 'two':
-                ### Creating for each test set two tuples, one for each class
+        return all_combs
 
-                ### always two!
+
+    def OLD_generate_test_splits(self):
+
+        ### Experiment two, somewhat easier
+        ### as there are always two classes
+        if self.experiment_id == 'two':
+            ### Creating for each test set two tuples, one for each class
+
+            ### always two!
+            cat_length = 8
+            combinations_one_cat = list(itertools.combinations(list(range(cat_length)), 1))
+            combinations = list(itertools.product(combinations_one_cat, repeat=2))
+            '''
+            ### Reducing stimuli to nested sub-class
+            if self.semantic_category in ['people', 'places', 'famous', 'familiar']:
+                cat_index = 2
                 cat_length = 8
                 combinations_one_cat = list(itertools.combinations(list(range(cat_length)), 1))
                 combinations = list(itertools.product(combinations_one_cat, repeat=2))
-                '''
-                ### Reducing stimuli to nested sub-class
-                if self.semantic_category in ['people', 'places', 'famous', 'familiar']:
-                    cat_index = 2
-                    cat_length = 8
-                    combinations_one_cat = list(itertools.combinations(list(range(cat_length)), 1))
-                    combinations = list(itertools.product(combinations_one_cat, repeat=2))
-                ### Using all stimuli
-                else:
-                    cat_length = 16
-                    combinations_one_cat = list(itertools.combinations(list(range(cat_length)), 2))
-                    combinations = list(itertools.product(combinations_one_cat, repeat=2))
-                '''
-                ### Semantic domain
-                if 'coarse' in self.analysis:
-                    cat_index = 1
-                ### Type of familiarity
-                else:
-                    cat_index = 2
-
-            ### Experiment one, there we go...
+            ### Using all stimuli
             else:
-                ### Transfer classification (nice 'n easy...)
-                if self.entities == 'individuals_to_categories':
-                    ### Creating for each test set two tuples, one for each class
-                    if 'coarse' in self.analysis:
-                        cat_index = 1
-                        cat_length = 4
-                        combinations_one_cat = list(itertools.combinations(list(range(cat_length)), 2))
-                        combinations = list(itertools.product(combinations_one_cat, repeat=2))
-                    ### When looking at fine-grained categories, 
-                    ### there's only one test set with the 4/8 classes
-                    elif 'fine' in self.analysis:
-                        cat_index = 2
-                        cat_length = 1
-                        n_classes = 8 if self.semantic_category=='all' else 4
-                        combinations = [(0 for i in range(n_classes))]
-                ### Standard classification
-                else:
-                    ### People vs places
-                    if 'coarse' in self.analysis:
-                        cat_index = 1
-                        ### Using individuals only
-                        if self.entities == 'individuals_only':
-                            cat_length = 16
-                        ### Mixing individuals and categories
-                        elif self.entities == 'individuals_and_categories':
-                            cat_length = 20
-                        combinations_one_cat = list(itertools.combinations(list(range(cat_length)), 2))
-                        combinations = list(itertools.product(combinations_one_cat, repeat=2))
-                    ### Fine-grained categories
-                    elif 'fine' in self.analysis:
-                        cat_index = 2
-                        if self.entities == 'individuals_only':
-                            cat_length = 4
-                        elif self.entities == 'individuals_and_categories':
-                            cat_length = 5
-                        ### Transfer classification
-                        else:
-                            cat_length = 1
-                        ### Using all stimuli
-                        if self.semantic_category == 'all':
-                            combinations = list(itertools.product(list(range(cat_length)), repeat=8))
-                        ### Using only a nested sub-class
-                        else:
-                            combinations = list(itertools.product(list(range(cat_length)), repeat=4))
-
-            ### Getting the list of classes to be used
-            cats = set([v[cat_index] for k, v in self.trigger_to_info.items()])
-            ### Transfer classification requires to reduce the possible test triggers
-            if self.entities == 'individuals_to_categories':
-                cat_to_trigger = {cat : [t for t, info in self.trigger_to_info.items() if info[cat_index] == cat and t>100] for cat in cats}
-            ### Standard classification considers them all
-            else:
-                cat_to_trigger = {cat : [t for t, info in self.trigger_to_info.items() if info[cat_index] == cat] for cat in cats}
-
-            ### Just checking all's good and fine
-            for k, v in cat_to_trigger.items():
-                assert len(v) == cat_length
-
-            ### Randomizing all test splits
-            test_permutations = list(random.sample(combinations, k=len(combinations)))
-
-            ### Creating test splits, and correcting them for length if required
-            test_splits = list()
-            for i_p, p in enumerate(test_permutations):
-                triggers = list()
-                ### Fine-grained categories requires a separate case
-                if 'fine' in self.analysis:
-                    if self.semantic_category != 'all':
-                        assert len(cat_to_trigger.keys()) == 4
-                    else:
-                        assert len(cat_to_trigger.keys()) == 8
-                    for t_i, ts in zip(p, cat_to_trigger.values()):
-                        triggers.append(ts[t_i])
-
-                    ### Checking
-                    if self.semantic_category != 'all':
-                        assert len(triggers) == 4
-                    else:
-                        assert len(triggers) == 8 
-                ### Cases where there's only two classes
-                else:
-                    assert len(cat_to_trigger.keys()) == 2
-                    for kv_i, kv in enumerate(cat_to_trigger.items()):
-                        for ind in p[kv_i]:
-                            triggers.append(kv[1][ind])
-
-                    ### Checking
-                    if self.semantic_category != 'all':
-                        assert len(triggers) == 2
-                    else:
-                        assert len(triggers) == 4 
-
-                test_splits.append(triggers)
-            ### Difference across people and places / familiar and unfamiliar
-            if 'coarse' in self.analysis:
-
-                stat_diff = [[len(n[0]) for n in self.trigger_to_info.values() if n[1]==k] for k in set([v[1] for v in self.trigger_to_info.values()])]
-                stat_diff = scipy.stats.ttest_ind(stat_diff[0], stat_diff[1])
-                print('Difference between lengths for people and places: {}'.format(stat_diff))
-
-            ### Collecting average lengths for the current labels
-
-            ### To correct both for coarse and fine-grained lengths
-            ### use this line
-            ### For replication of experiment one, use this line
-            #if 'coarse' in args.analysis or 'fine' in args.analysis:
-            if 'coarse' in self.analysis:
+                cat_length = 16
+                combinations_one_cat = list(itertools.combinations(list(range(cat_length)), 2))
+                combinations = list(itertools.product(combinations_one_cat, repeat=2))
+            '''
+            ### Semantic domain
+            if 'coarse' in self.analysis or self.semantic_category in ['familiar', 'famous']:
                 cat_index = 1
+            ### Type of familiarity
             else:
                 cat_index = 2
-            current_cats = set([v[cat_index] for v in self.trigger_to_info.values()])
-            cat_to_average_length = {k : numpy.average([len(n[0]) for n in self.trigger_to_info.values() if n[cat_index]==k]) for k in current_cats}
-            cat_to_lengths = [[len(n[0]) for n in self.trigger_to_info.values() if n[cat_index]==k] for k in current_cats]
-            stat_sig_length = scipy.stats.ttest_ind(cat_to_lengths[0], cat_to_lengths[1])
-            ### Replication
-            if self.experiment_id == 'one':
-                cat_to_average_length = {'actor' : 14,
-                                      'musician' : 9,
-                                      'writer' : 13,
-                                      'politician' : 13,
-                                      'person' : 12, 
-                                      'place' : 9,
-                                      'city' : 6, 
-                                      'country' : 7,
-                                      "body_of_water" : 12, 
-                                      'monument' : 11
-                                      }
-            print('Current categories and average lengths: {}'.format(cat_to_average_length))
-            print('current statistical difference among the two categories: {}'.format(stat_sig_length))
+
+        ### Experiment one, there we go...
+        else:
+            ### Transfer classification (nice 'n easy...)
+            if self.entities == 'individuals_to_categories':
+                ### Creating for each test set two tuples, one for each class
+                if 'coarse' in self.analysis:
+                    cat_index = 1
+                    cat_length = 4
+                    combinations_one_cat = list(itertools.combinations(list(range(cat_length)), 2))
+                    combinations = list(itertools.product(combinations_one_cat, repeat=2))
+                ### When looking at fine-grained categories, 
+                ### there's only one test set with the 4/8 classes
+                elif 'fine' in self.analysis:
+                    cat_index = 2
+                    cat_length = 1
+                    n_classes = 8 if self.semantic_category=='all' else 4
+                    combinations = [(0 for i in range(n_classes))]
+            ### Standard classification
+            else:
+                ### People vs places
+                if 'coarse' in self.analysis:
+                    cat_index = 1
+                    ### Using individuals only
+                    if self.entities == 'individuals_only':
+                        cat_length = 16
+                    ### Mixing individuals and categories
+                    elif self.entities == 'individuals_and_categories':
+                        cat_length = 20
+                    combinations_one_cat = list(itertools.combinations(list(range(cat_length)), 2))
+                    combinations = list(itertools.product(combinations_one_cat, repeat=2))
+                ### Fine-grained categories
+                elif 'fine' in self.analysis:
+                    cat_index = 2
+                    if self.entities == 'individuals_only':
+                        cat_length = 4
+                    elif self.entities == 'individuals_and_categories':
+                        cat_length = 5
+                    ### Transfer classification
+                    else:
+                        cat_length = 1
+                    ### Using all stimuli
+                    if self.semantic_category == 'all':
+                        combinations = list(itertools.product(list(range(cat_length)), repeat=8))
+                    ### Using only a nested sub-class
+                    else:
+                        combinations = list(itertools.product(list(range(cat_length)), repeat=4))
+
+        ### Getting the list of classes to be used
+        cats = set([v[cat_index] for k, v in self.trigger_to_info.items()])
+        ### Transfer classification requires to reduce the possible test triggers
+        if self.entities == 'individuals_to_categories':
+            cat_to_trigger = {cat : [t for t, info in self.trigger_to_info.items() if info[cat_index] == cat and t>100] for cat in cats}
+        ### Standard classification considers them all
+        else:
+            cat_to_trigger = {cat : [t for t, info in self.trigger_to_info.items() if info[cat_index] == cat] for cat in cats}
+
+        ### Just checking all's good and fine
+        for k, v in cat_to_trigger.items():
+            assert len(v) == cat_length
+
+        ### Randomizing all test splits
+        test_permutations = list(random.sample(combinations, k=len(combinations)))
+
+        ### Creating test splits, and correcting them for length if required
+        test_splits = list()
+        for i_p, p in enumerate(test_permutations):
+            triggers = list()
+            ### Fine-grained categories requires a separate case
+            if 'fine' in self.analysis:
+                if self.semantic_category != 'all':
+                    assert len(cat_to_trigger.keys()) == 4
+                else:
+                    assert len(cat_to_trigger.keys()) == 8
+                for t_i, ts in zip(p, cat_to_trigger.values()):
+                    triggers.append(ts[t_i])
+
+                ### Checking
+                if self.semantic_category != 'all':
+                    assert len(triggers) == 4
+                else:
+                    assert len(triggers) == 8 
+            ### Cases where there's only two classes
+            else:
+                assert len(cat_to_trigger.keys()) == 2
+                for kv_i, kv in enumerate(cat_to_trigger.items()):
+                    for ind in p[kv_i]:
+                        triggers.append(kv[1][ind])
+
+                ### Checking
+                if self.semantic_category != 'all':
+                    assert len(triggers) == 2
+                else:
+                    assert len(triggers) == 4 
+
+            test_splits.append(triggers)
+        ### Difference across people and places / familiar and unfamiliar
+        if 'coarse' in self.analysis:
+
+            stat_diff = [[len(n[0]) for n in self.trigger_to_info.values() if n[1]==k] for k in set([v[1] for v in self.trigger_to_info.values()])]
+            stat_diff = scipy.stats.ttest_ind(stat_diff[0], stat_diff[1])
+            print('Difference between lengths for people and places: {}'.format(stat_diff))
+
+        ### Collecting average lengths for the current labels
+
+        ### To correct both for coarse and fine-grained lengths
+        ### use this line
+        ### For replication of experiment one, use this line
+        #if 'coarse' in args.analysis or 'fine' in args.analysis:
+        current_cats = set([v[cat_index] for v in self.trigger_to_info.values()])
+        cat_to_average_length = {k : numpy.average([len(n[0]) for n in self.trigger_to_info.values() if n[cat_index]==k]) for k in current_cats}
+        cat_to_lengths = [[len(n[0]) for n in self.trigger_to_info.values() if n[cat_index]==k] for k in current_cats]
+        stat_sig_length = scipy.stats.ttest_ind(cat_to_lengths[0], cat_to_lengths[1])
+        ### Replication
+        if self.experiment_id == 'one':
+            cat_to_average_length = {'actor' : 14,
+                                  'musician' : 9,
+                                  'writer' : 13,
+                                  'politician' : 13,
+                                  'person' : 12, 
+                                  'place' : 9,
+                                  'city' : 6, 
+                                  'country' : 7,
+                                  "body_of_water" : 12, 
+                                  'monument' : 11
+                                  }
+        print('Current categories and average lengths: {}'.format(cat_to_average_length))
+        print('current statistical difference among the two categories: {}'.format(stat_sig_length))
 
         ### correction needs to take place only when
         ### difference is statistically significant
@@ -500,9 +458,9 @@ class LoadEEG:
             assert epochs.baseline[1] == 0.
 
         ### For decoding, considering only time points after 150 ms
-        if args.analysis in ['decoding', 'encoding', 'feature_selection']:
-            tmin = 0.15
-            tmax = 1.2
+        if args.analysis in ['whole_trial']:
+            tmin = 0.3
+            tmax = 0.8
             epochs.crop(tmin=tmin, tmax=tmax)
         else:
             tmin = -.1
