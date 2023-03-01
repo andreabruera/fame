@@ -60,20 +60,9 @@ else:
 
         if args.analysis == 'time_resolved':
 
-            ### time-resolved rsa
-            if args.mapping_model == 'rsa':
-                ### Group searchlight analysis
-                if args.debugging:
-                    for n in range(1, experiment.subjects+1):
-                        time_resolved_rsa([args, n, False, searchlight_clusters])
-                else:
-                    with multiprocessing.Pool(processes=processes) as pool:
-                        pool.map(time_resolved_rsa, [(args, n, False, searchlight_clusters) for n in range(1, experiment.subjects+1)])
-                        pool.close()
-                        pool.join()
+            #if args.input_target_model in ['coarse_category', 'fine_category', 'famous_familiar'] and args.mapping_model != 'rsa':
+            if 0 == 1:
 
-            ### enc/decoding
-            elif args.mapping_model in ['ridge', 'support_vector']:
                 ### Single subject, for debugging
                 if args.debugging:
 
@@ -91,21 +80,21 @@ else:
                         pool.close()
                         pool.join()
 
-        ### rsa searchlight in the range 100-750ms
-        elif args.analysis == 'searchlight':
-
-            if args.mapping_model == 'rsa':
-
+            else:
                 if args.debugging:
                     for n in range(1, experiment.subjects+1):
-                        time_resolved_rsa([args, n, True, searchlight_clusters])
+                        time_resolved_rsa([args, n, False, searchlight_clusters])
                 else:
                     with multiprocessing.Pool(processes=processes) as pool:
-                        pool.map(time_resolved_rsa, [(args, n, True, searchlight_clusters) for n in range(1, experiment.subjects+1)])
+                        pool.map(time_resolved_rsa, [(args, n, False, searchlight_clusters) for n in range(1, experiment.subjects+1)])
                         pool.close()
                         pool.join()
 
-            if args.mapping_model in ['ridge', 'support_vector']:
+        ### rsa searchlight in the range 100-750ms
+        elif args.analysis == 'searchlight':
+
+            #if args.input_target_model in ['coarse_category', 'fine_category', 'famous_familiar'] and args.mapping_model != 'rsa':
+            if 0 == 1:
 
                 for n in range(1, experiment.subjects+1):
 
@@ -146,6 +135,18 @@ else:
 
                     results_array = join_searchlight_results(results, out_times)
                     write_plot_searchlight(args, n, [(t/10000)+(searchlight_clusters.time_radius/20000) for t in relevant_times], results_array)
+
+            else:
+
+                if args.debugging:
+                    for n in range(1, experiment.subjects+1):
+                        time_resolved_rsa([args, n, True, searchlight_clusters])
+                else:
+                    with multiprocessing.Pool(processes=processes) as pool:
+                        pool.map(time_resolved_rsa, [(args, n, True, searchlight_clusters) for n in range(1, experiment.subjects+1)])
+                        pool.close()
+                        pool.join()
+
 
         ### whole-trial encoding / decoding
         elif args.analysis == 'whole_trial':

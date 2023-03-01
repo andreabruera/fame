@@ -792,9 +792,10 @@ def load_vectors(args, experiment, n, clustered=False):
         vectors = zero_one_norm(vectors)
 
     elif 'frequency' in args.input_target_model:
+        '''
         freqs = list()
         for k in names:
-            with open(os.path.join('entity_sentences_{}_from_all_corpora'.format(args.experiment_id), 'it', '{}.sentences'.format(k))) as i:
+            with open(os.path.join('..', 'entity_sentences_{}_from_all_corpora'.format(args.experiment_id), 'it', '{}.sentences'.format(k))) as i:
                 lines = [l.strip() for l in i.readlines()]
             lines = [l for l in lines if len(l) > 3]
             freqs.append(len(lines))
@@ -804,6 +805,13 @@ def load_vectors(args, experiment, n, clustered=False):
         else:
             vectors = {k_one : float(l_one) for k_one, l_one in zip(names, freqs)}
             #vectors = {k_one : numpy.array([abs(l_one-l_two) for k_two, l_two in zip(names, freqs) if k_two!=k_one]) for k_one, l_one in zip(names, freqs)}
+        '''
+        with open('frequencies_full_wiki.tsv') as i:
+            lines = [l.strip().split('\t') for l in i.readlines()][1:]
+        if args.input_target_model == 'log_frequency':
+            vectors = {l[0] : numpy.array(l[2], dtype=numpy.float64) for l in lines}
+        else:
+            vectors = {l[0] : numpy.array(l[1], dtype=numpy.float64) for l in lines}
         vectors = zero_one_norm(vectors)
 
     elif args.input_target_model == 'w2v':
@@ -868,11 +876,9 @@ def load_vectors(args, experiment, n, clustered=False):
                               args.experiment_id,
                               args.input_target_model,
                               'top_four', 
-                              #'top_six', 
-                              #'first_four', 
-                              #'middle_four',
                               'span_averaged',
                               )
+        print(folder)
         assert os.path.exists(folder)
         files = [f for f in os.listdir(folder)]
         assert len(files) in [16, 18, 32, 40]

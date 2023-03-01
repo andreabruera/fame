@@ -6,7 +6,27 @@ import sklearn
 
 from scipy import stats
 from skbold.preproc import ConfoundRegressor
+from sklearn.linear_model import Ridge
 from sklearn.preprocessing import LabelEncoder
+from sklearn.svm import SVR
+
+def return_baseline(args):
+
+    if args.analysis in ['time_resolved_rsa']:
+        random_baseline=0.
+    else:
+        if args.experiment_id == 'one':
+            if args.input_target_model == 'fine_category':
+                if args.semantic_category_one != 'all':
+                    random_baseline = 0.25
+                else:
+                    random_baseline = 0.125
+            else:
+                random_baseline = 0.5
+        elif args.experiment_id == 'two':
+            random_baseline = 0.5
+
+    return random_baseline
 
 def read_args():
     semantic_categories_one = [
@@ -236,12 +256,20 @@ def check_args(args):
         if args.semantic_category_two in ['individual', 'category']:
             marker = True
             message = 'experiment two does not distinguish between individuals and categories!'
+        if args.semantic_category_two in ['familiar', 'all']:
+            if args.input_target_model in ['log_frequency', 'frequency']:
+                marker = True
+                message = 'frequency is not available for familiar entities!'
     if args.input_target_model == 'coarse_category' and args.semantic_category_one in ['person', 'place']:
         marker = True
         message = 'wrong model and semantic category!'
     if args.input_target_model == 'famous_familiar' and args.semantic_category_one in ['famous', 'familiar']:
         marker = True
         message = 'wrong model and semantic category!'
+    if args.mapping_model in ['ridge', 'support_vector'] and args.mapping_direction == 'correlation':
+        marker = True
+        message = 'no correlation for ridge/support vector!'
+        
     if marker:
         raise RuntimeError(message)
 
@@ -263,15 +291,21 @@ def split_train_test(args, split, eeg, experiment, comp_vectors):
     test_lengths = list()
 
     for trig in split:
-        if args.mapping_direction != 'correlation':
+        #if args.input_target_model not in ['coarse_category', 'fine_category', 'famous_familiar'] or args.mapping_model == 'rsa':
+        if 1 == 1:
+        #if args.mapping_direction != 'correlation':
             trig = experiment.trigger_to_info[trig][0]
             vecs = comp_vectors[trig]
         erps = eeg[trig]
         if not isinstance(erps, list):
             erps = [erps]
-            if args.mapping_direction != 'correlation':
+            #if args.input_target_model not in ['coarse_category', 'fine_category', 'famous_familiar'] or args.mapping_model == 'rsa':
+            if 1 == 1:
+            #if args.mapping_direction != 'correlation':
                 vecs = [vecs]
-        if args.mapping_direction != 'correlation':
+        #if args.input_target_model not in ['coarse_category', 'fine_category', 'famous_familiar'] or args.mapping_model == 'rsa':
+        if 1 == 1:
+        #if args.mapping_direction != 'correlation':
             test_samples.extend(vecs)
             test_true.extend(erps)
             test_lengths.append(len(trig))
@@ -286,12 +320,16 @@ def split_train_test(args, split, eeg, experiment, comp_vectors):
     train_lengths = list()
 
     for k, erps in eeg.items():
-        if args.mapping_direction != 'correlation':
+        #if args.input_target_model not in ['coarse_category', 'fine_category', 'famous_familiar'] or args.mapping_model == 'rsa':
+        if 1 == 1:
+        #if args.mapping_direction != 'correlation':
             k = {v[0] : k for k, v in experiment.trigger_to_info.items()}[k]
         if not isinstance(erps, list):
             erps = [erps]
         if k not in split:
-            if args.mapping_direction != 'correlation':
+            if 1 == 1:
+            #if args.input_target_model not in ['coarse_category', 'fine_category', 'famous_familiar'] or args.mapping_model == 'rsa':
+            #if args.mapping_direction != 'correlation':
                 k = experiment.trigger_to_info[k][0]
                 vecs = [comp_vectors[k]]
                 train_samples.extend(vecs)
@@ -304,7 +342,8 @@ def split_train_test(args, split, eeg, experiment, comp_vectors):
 
     test_samples = numpy.array(test_samples, dtype=numpy.float64)
     train_samples = numpy.array(train_samples, dtype=numpy.float64)
-    if args.mapping_direction == 'correlation':
+    #if args.mapping_direction == 'correlation':
+    '''
         ### Check labels
         if args.experiment_id == 'two':
             assert len(list(set(train_true))) == 2
@@ -334,7 +373,10 @@ def split_train_test(args, split, eeg, experiment, comp_vectors):
                     assert len(list(set(train_true))) == 4
                 if args.semantic_category == 'all':
                     assert len(list(set(train_true))) == 8
+    '''
 
+    #if args.input_target_model in ['coarse_category', 'fine_category', 'famous_familiar'] and args.mapping_model != 'rsa':
+    if 0 == 1:
         train_true = LabelEncoder().fit_transform(train_true)
         test_true = LabelEncoder().fit_transform(test_true)
         
@@ -361,27 +403,66 @@ def evaluate_pairwise(args, train_true, test_true, train_samples, test_samples, 
         cfr = ConfoundRegressor(confound=train_lengths, X=train_true.copy())
         cfr.fit(train_true)
         train_true = cfr.transform(train_true)
-    if type(test_samples[0]) in [int, float, numpy.float64]:
-        test_samples = [[1 - abs(tst-tr) for tr in train_samples] for tst in test_samples]
+        '''
+        correction_lengths = numpy.hstack([train_lengths, test_lengths])
+        correction_data = numpy.vstack([train_true, test_true])
+        cfr = ConfoundRegressor(confound=correction_lengths, X=correction_data)
+        cfr.fit(train_true)
+        train_true = cfr.transform(train_true)
+        test_true = cfr.transform(test_true)
+        '''
+    if args.mapping_model == 'rsa':
+        if type(test_samples[0]) in [int, float, numpy.float64]:
+            test_samples = [[1 - abs(tst-tr) for tr in train_samples] for tst in test_samples]
 
-    ### for vectors, we use correlation
-    ### NB: the higher the value, the more similar the items!
-    else:
-        test_samples = [[scipy.stats.pearsonr(tst, tr)[0] for tr in train_samples] for tst in test_samples]
-    if args.mapping_direction == 'encoding':
-        ### Encoding targets (brain images)
-        test_samples = [numpy.sum([t*corrs[t_i] for t_i, t in enumerate(train_true)], axis=0) for corrs in test_samples]
+        ### for vectors, we use correlation
+        ### NB: the higher the value, the more similar the items!
+        else:
+            test_samples = [[scipy.stats.pearsonr(tst, tr)[0] for tr in train_samples] for tst in test_samples]
+        if args.mapping_direction == 'encoding':
+            ### Encoding targets (brain images)
+            test_samples = [numpy.sum([t*corrs[t_i] for t_i, t in enumerate(train_true)], axis=0) for corrs in test_samples]
 
-    elif args.mapping_direction == 'decoding':
-        ### test_samples = model correlations
-        test_true = [[scipy.stats.pearsonr(tst, tr)[0] for tr in train_true] for tst in test_true]
+        elif args.mapping_direction == 'decoding':
+            ### test_samples = model correlations
+            test_true = [[scipy.stats.pearsonr(tst, tr)[0] for tr in train_true] for tst in test_true]
+
+    elif args.mapping_model in ['ridge', 'support_vector']:
+
+        ### Differentiating between binary and multiclass classifier
+        if args.mapping_model == 'support_vector':
+            classifier = SVR()
+        elif args.mapping_model == 'ridge':
+            classifier = Ridge()
+
+        if args.mapping_direction == 'encoding':
+            if type(train_samples[0]) in [int, float, numpy.float64]:
+                train_samples = train_samples.reshape(-1, 1)
+                test_samples = test_samples.reshape(-1, 1)
+            classifier.fit(train_samples, train_true)
+            ### test_samples = predictions
+            test_samples = classifier.predict(test_samples)
+
+        elif args.mapping_direction == 'decoding':
+            classifier.fit(train_true, train_samples)
+            ### test_true = predictions
+            predictions = classifier.predict(test_true)
+            test_true = test_samples.copy()
+            test_samples = predictions.copy()
+            import pdb; pdb.set_trace()
 
     wrong = 0.
     for idx_one, idx_two in [(0, 1), (1, 0)]:
-        wrong += scipy.stats.pearsonr(test_samples[idx_one], test_true[idx_two])[0]
+        if type(test_samples[0]) in [int, float, numpy.float64]:
+            wrong += 1 - abs(test_samples[idx_one]-test_true[idx_two])
+        else:
+            wrong += scipy.stats.pearsonr(test_samples[idx_one], test_true[idx_two])[0]
     correct = 0.
     for idx_one, idx_two in [(0, 0), (1, 1)]:
-        correct += scipy.stats.pearsonr(test_samples[idx_one], test_true[idx_two])[0]
+        if type(test_samples[0]) in [int, float, numpy.float64]:
+            correct += 1 - abs(test_samples[idx_one]-test_true[idx_two])
+        else:
+            correct += scipy.stats.pearsonr(test_samples[idx_one], test_true[idx_two])[0]
 
     if correct > wrong:
         #accuracies.append(1)

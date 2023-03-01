@@ -54,9 +54,11 @@ def time_resolved_rsa(all_args):
             corr = rsa_evaluation_round(args, experiment, current_eeg, stimuli_batches, model_sims, comp_vectors)
             sub_scores.append(corr)
         out_path = prepare_folder(args)
+
         file_path = os.path.join(out_path, 'sub_{:02}_{}.txt'.format(n, args.input_target_model))
         correction = 'corrected' if args.corrected else 'uncorrected'
         file_path = file_path.replace('.txt', '_{}_scores.txt'.format(correction))
+
         with open(os.path.join(file_path), 'w') as o:
             for t in all_eeg.times:
                 o.write('{}\t'.format(t))
@@ -78,7 +80,7 @@ def time_resolved_rsa(all_args):
                 end_time = max([t_i for t_i, t in enumerate(all_eeg.times) if t<=(time+searchlight_clusters.time_radius)/10000])+1
                 #print([start_time, end_time])
                 current_eeg = {k : v[places, start_time:end_time].flatten() for k, v in eeg.items()}
-                corr = rsa_evaluation_round(args, experiment, current_eeg, stimuli_batches, model_sims)
+                corr = rsa_evaluation_round(args, experiment, current_eeg, stimuli_batches, model_sims, comp_vectors)
                 results_dict[(places[0], start_time)] = corr
         out_times = sorted(set(out_times))
 

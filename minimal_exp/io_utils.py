@@ -161,7 +161,7 @@ class ExperimentInfo:
                 trig_to_info = {k : v for k, v in trig_to_info.items() if v[2]==self.semantic_category_two}
             elif self.experiment_id == 'one':
                 if self.semantic_category_two == 'individual':
-                    trig_to_info = {k : v for k, v in trig_to_info.items90 if k<=100}
+                    trig_to_info = {k : v for k, v in trig_to_info.items() if k<=100}
                 elif self.semantic_category_two == 'category':
                     trig_to_info = {k : v for k, v in trig_to_info.items() if k>100}
 

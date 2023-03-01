@@ -5,10 +5,10 @@ import scipy
 
 from scipy import stats
 from tqdm import tqdm
+from general_utils import prepare_folder
 
 def write_plot_searchlight(args, n, explicit_times, results_array):
 
-    from io_utils import prepare_folder
     output_folder = prepare_folder(args)
 
     if 'classification' in args.analysis:
@@ -16,7 +16,7 @@ def write_plot_searchlight(args, n, explicit_times, results_array):
                   'sub-{:02}.rsa'.format(n))
     else:
         input_file = os.path.join(output_folder,
-                  '{}_sub-{:02}.rsa'.format(args.word_vectors, n))
+                  '{}_sub-{:02}.rsa'.format(args.input_target_model, n))
 
     ### adding information about cluster_size
     input_file = input_file.replace('.rsa', '_spatial_{}_temporal_{}.rsa'.format(args.searchlight_spatial_radius, args.searchlight_temporal_radius))

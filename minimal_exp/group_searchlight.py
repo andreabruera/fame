@@ -15,7 +15,7 @@ from scipy import stats
 from matplotlib import pyplot
 from tqdm import tqdm
 
-from general_utils import prepare_folder
+from general_utils import prepare_folder, return_baseline
 from io_utils import ExperimentInfo, LoadEEG
 from searchlight import SearchlightClusters
 
@@ -39,10 +39,10 @@ def group_searchlight(args):
         #else:
         #    input_folder = prepare_folder(args)
         input_folder = prepare_folder(args)
-        if 'classification' in args.analysis:
-            input_file = os.path.join(input_folder, 'sub-{:02}.rsa'.format(n))
-        else:
-            input_file = os.path.join(input_folder, '{}_sub-{:02}.rsa'.format(args.word_vectors, n))
+        #if 'classification' in args.analysis:
+        #    input_file = os.path.join(input_folder, 'sub-{:02}.rsa'.format(n))
+        #else:
+        input_file = os.path.join(input_folder, '{}_sub-{:02}.rsa'.format(args.input_target_model, n))
 
         ### adding information about cluster_size
         input_file = input_file.replace('.rsa', 
@@ -57,26 +57,18 @@ def group_searchlight(args):
         assert electrodes.shape == (len(times), 128)
         ### reducing relevant time points
         ### following leonardelli & fairhall, range is 100-750ms
-        relevant_indices = [t_i for t_i, t in enumerate(times) if (t>0.2 and t<0.6)]
+
+        upper_limit = 0.75 if args.experiment_id == 'two' else 1.
+        lower_limit = 0.2 if args.experiment_id == 'two' else .3
+        relevant_indices = [t_i for t_i, t in enumerate(times) if (t>lower_limit and t<upper_limit)]
         #relevant_indices = [t_i for t_i, t in enumerate(times) if t>0.]
         times = times[relevant_indices]
         electrodes = electrodes[relevant_indices, :]
 
         all_subjects.append(electrodes)
 
-    all_subjects = numpy.array(all_subjects)
-
-    if 'rsa' not in args.analysis:
-        if args.experiment_id == 'two':
-            all_subjects = all_subjects-0.5
-        elif args.experiment_id == 'one':
-            if 'coarse' in args.analysis:
-                all_subjects = all_subjects-0.5
-            else:
-                if args.semantic_category == 'all':
-                    all_subjects = all_subjects-0.125
-                else:
-                    all_subjects = all_subjects-0.25
+    random_baseline = return_baseline(args) 
+    all_subjects = numpy.array(all_subjects) - random_baseline
 
 
     t_stats, _, \
@@ -91,10 +83,10 @@ def group_searchlight(args):
                                                        )
     #print(min(t_stats.flatten()))
     ### Plotting the results
-    if 'classification' in args.analysis:
-        logging.info('Minimum p-value for {}: {}'.format(args.semantic_category, min(p_values)))
-    else:
-        logging.info('Minimum p-value for {}: {}'.format(args.word_vectors, min(p_values)))
+    #if 'classification' in args.analysis:
+    #    logging.info('Minimum p-value for {}: {}'.format(args.semantic_category, min(p_values)))
+    #else:
+    logging.info('Minimum p-value for {}: {}'.format(args.input_target_model, min(p_values)))
 
     significance = .05
     original_shape = t_stats.shape
@@ -164,10 +156,10 @@ def group_searchlight(args):
         #assert len(channels) == log_p.shape[0]
         assert len(channels) == reshaped_p.shape[0]
         assert len(times) == reshaped_p.shape[-1]
-        if 'classification' in args.analysis:
-            txt_path = os.path.join(plot_path, 'searchlight_classification_significant_points_{}.txt'.format(significance))
-        else:
-            txt_path = os.path.join(plot_path, '{}_searchlight_rsa_significant_points_{}.txt'.format(args.word_vectors, significance))
+        #if 'classification' in args.analysis:
+        #    txt_path = os.path.join(plot_path, 'searchlight_classification_significant_points_{}.txt'.format(significance))
+        #else:
+        txt_path = os.path.join(plot_path, '{}_searchlight_rsa_significant_points_{}.txt'.format(args.input_target_model, significance))
 
         txt_path = txt_path.replace('.txt', '_spatial_{}_temporal_{}.txt'.format(
                                                    args.searchlight_spatial_radius,
@@ -189,10 +181,10 @@ def group_searchlight(args):
         #mode = 'all' if i==0 else 'significant'
 
         correction = 'corrected' if args.corrected else 'uncorrected'
-        if 'classification' in args.analysis:
-            title = '{} Classification Searchlight for: {}'.format(re.sub('^.+?classification', '', args.analysis), args.semantic_category).replace('_', ' ')
-        else:
-            title='RSA Searchlight for {} - {}'.format(args.word_vectors, args.semantic_category.replace('_', ' '))
+        #if 'classification' in args.analysis:
+        #    title = '{} Classification Searchlight for: {}'.format(re.sub('^.+?classification', '', args.analysis), args.semantic_category).replace('_', ' ')
+        #else:
+        title='RSA Searchlight for {} - {}'.format(args.input_target_model, args.semantic_category_one)
         title = '{} - {}, p<={}'.format(title, correction, significance)
 
         #if mode == 'significant':
@@ -223,11 +215,11 @@ def group_searchlight(args):
         #else:
             #evoked.plot_topomap(ch_type='eeg', time_unit='s', times=[i for i in evoked.times], units='-log(p)\nif\np<=.05', ncols=12, nrows='auto', vmin=0., scalings={'eeg':1.}, cmap='PuBu', title=title)
 
-        f_name = os.path.join(plot_path, '{}_{}_{}_significant_points.jpg'.format(correction, args.semantic_category, significance))
-        if 'classification' in args.analysis:
-            f_name = f_name.replace('.jpg', 'classification_{}.jpg'.format(args.data_kind))
-        else:
-            f_name = f_name.replace('.jpg', '_rsa_{}.jpg'.format(args.word_vectors))
+        f_name = os.path.join(plot_path, '{}_{}_{}_significant_points.jpg'.format(correction, args.semantic_category_one, significance))
+        #if 'classification' in args.analysis:
+        #    f_name = f_name.replace('.jpg', 'classification_{}.jpg'.format(args.data_kind))
+        #else:
+        f_name = f_name.replace('.jpg', '_rsa_{}.jpg'.format(args.input_target_model))
         f_name = f_name.replace('.jpg', '_spatial_{}_temporal_{}.jpg'.format(args.searchlight_spatial_radius, args.searchlight_temporal_radius))
         print(f_name)
         pyplot.savefig(f_name, dpi=600)

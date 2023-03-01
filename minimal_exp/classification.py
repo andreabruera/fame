@@ -18,55 +18,6 @@ from tqdm import tqdm
 from general_utils import split_train_test, prepare_folder 
 from io_utils import LoadEEG, ExperimentInfo
 
-def time_generalization_classify(arg):
-
-    args = arg[0]
-    experiment = arg[1]
-    eeg = arg[2]
-    split = arg[3]
-    iteration = arg[4]
-
-    test_samples = list()
-    test_true = list()
-
-    train_true, test_true, train_samples, test_samples = split_train_test(args, split, eeg, experiment)
-
-    iteration_scores = list()
-
-    if args.analysis == 'searchlight':
-        sample_shape = train_samples[0].shape
-        assert len(sample_shape) == 2
-        number_iterations = range(train_samples[0].shape[-1])
-
-    else:
-        number_iterations = [0]
-
-    for t in number_iterations:
-
-        if args.analysis == 'searchlight':
-            t_train = [erp[:, t] for erp in train_samples]
-            t_test = [erp[:, t] for erp in test_samples]
-        else:
-            t_train = train_samples.copy()
-            t_test = test_samples.copy()
-
-        ### fitting a model
-
-        ### Differentiating between binary and multiclass classifier
-        #classifier = SVC()
-        #classifier = RidgeClassifierCV(alphas=(0.1, 1.0, 10.0, 100., 1000., 10000.))
-        classifier = RidgeClassifier()
-        #classifier = RidgeClassifierCV()
-
-        ### Fitting the model on the training data
-        classifier.fit(t_train, train_true)
-
-        ### Computing the accuracy
-        accuracy = classifier.score(t_test, test_true)
-
-        iteration_scores.append(accuracy)
-
-    return iteration_scores
 
 ### Actual classification
 
@@ -92,23 +43,22 @@ def classify(arg):
     train_true, test_true, train_samples, test_samples, train_lengths, test_lengths = split_train_test(args, split, eeg, experiment, [])
 
     if args.analysis == 'searchlight':
+        number_iterations = [0]
+    else:
         sample_shape = train_samples[0].shape
         assert len(sample_shape) == 2
         number_iterations = range(train_samples[0].shape[-1])
-
-    else:
-        number_iterations = [0]
 
     iteration_scores = list()
 
     for t_i, t in enumerate(number_iterations):
 
         if args.analysis == 'searchlight':
-            t_train = [erp[:, t] for erp in train_samples]
-            t_test = [erp[:, t] for erp in test_samples]
-        else:
             t_train = train_samples.copy()
             t_test = test_samples.copy()
+        else:
+            t_train = [erp[:, t] for erp in train_samples]
+            t_test = [erp[:, t] for erp in test_samples]
         if args.corrected:
             if t_i == 0:
                 print('\nnow correcting for word length!\n')
@@ -122,7 +72,7 @@ def classify(arg):
         #classifier = RidgeClassifierCV(alphas=(0.1, 1.0, 10.0, 100., 1000., 10000.))
         elif args.mapping_model == 'ridge':
             classifier = RidgeClassifier()
-        #classifier = RidgeClassifierCV()
+            #classifier = RidgeClassifierCV()
 
         ### Fitting the model on the training data
         classifier.fit(t_train, train_true)

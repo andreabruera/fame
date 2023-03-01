@@ -8,24 +8,9 @@ import scipy
 from matplotlib import font_manager, pyplot
 from scipy import stats
 
-from general_utils import prepare_folder
+from general_utils import prepare_folder, return_baseline
 from plotting.plot_violins import plot_violins
 
-def return_baseline(args):
-
-    if args.analysis == 'time_resolved':
-        if args.mapping_direction == 'correlation':
-            random_baseline = 0.
-        if args.mapping_direction in ['encoding', 'decoding']:
-            if args.input_target_model == 'fine_category':
-                if args.semantic_category == 'all':
-                    random_baseline = 0.125
-                else:
-                    random_baseline = 0.25
-            else:
-                random_baseline = 0.5
-
-    return random_baseline
 
 def check_statistical_significance(args, setup_data, times):
 
@@ -39,6 +24,12 @@ def check_statistical_significance(args, setup_data, times):
                          popmean=random_baseline, \
                          alternative='greater').pvalue
     '''
+    lower_indices = [t_i for t_i, t in enumerate(times) if t<0.2]
+    upper_limit = 0.75 if args.experiment_id == 'two' else 1.
+    upper_indices = [t_i for t_i, t in enumerate(times) if t>upper_limit]
+
+    relevant_indices = [t_i for t_i, t in enumerate(times) if (t>=0.2 and t<=upper_limit)]
+    setup_data = setup_data[:, relevant_indices]
     if args.data_kind not in ['erp', 'alpha', 'beta', 'gamma', 'delta', 'theta']:
         ### Wilcoxon + FDR correction
         significance_data = setup_data.T - random_baseline
@@ -54,16 +45,11 @@ def check_statistical_significance(args, setup_data, times):
     else:
         ### TFCE correction using 1 time-point window
         ### following Leonardelli & Fairhall 2019, checking only in the range 100-750ms
-        lower_indices = [t_i for t_i, t in enumerate(times) if t<0.1]
-        upper_indices = [t_i for t_i, t in enumerate(times) if t>.75]
-
-        relevant_indices = [t_i for t_i, t in enumerate(times) if (t>=0.1 and t<=.75)]
-        setup_data = setup_data[:, relevant_indices]
         adj = numpy.zeros((setup_data.shape[-1], setup_data.shape[-1]))
         for i in range(setup_data.shape[-1]):
             #if args.subsample == 'subsample_2' or args.data_kind != 'erp':
-            win = range(1, 2)
-            #win = range(1, 3)
+            #win = range(1, 2)
+            win = range(1, 3)
             #if args.subsample == 'subsample_2':
             #    win = range(1, 2)
             #else:
@@ -78,7 +64,7 @@ def check_statistical_significance(args, setup_data, times):
                                                      adjacency=adj, \
                                                      threshold=dict(start=0, step=0.2))[2]
 
-        corrected_p_values = [1. for t in lower_indices] + corrected_p_values.tolist() + [1. for t in upper_indices]
+    corrected_p_values = [1. for t in lower_indices] + corrected_p_values.tolist() + [1. for t in upper_indices]
     assert len(corrected_p_values) == len(times)
     print(min(corrected_p_values))
     significance = 0.05
@@ -88,78 +74,11 @@ def check_statistical_significance(args, setup_data, times):
 
     return significant_indices, semi_significant_indices
 
-def possibilities(args):
-
-    if args.experiment_id == 'one':
-
-        if args.semantic_category_one in ['people', 'places']:
-            categories = ['people', 'places']
-            #categories = [args.semantic_category]
-            #entities = ['individuals_only', 'individuals_and_categories']
-            entities = [args.entities]
-
-        else:
-            categories = [args.semantic_category]
-       
-            if args.entities == 'individuals_to_categories' or \
-                            args.entities == 'all_to_categories':
-                entities = ['individuals_to_categories', \
-                            #'individuals_only'\
-                            ]
-                            #entities = [args.entities]
-            else:
-                entities = [#'individuals_only', 
-                            'controlled for length', 'uncontrolled',
-                            #'individuals_to_categories', \
-                            #'individuals_and_categories', \
-                            #'all_to_individuals'
-                           ]
-                entities = [args.entities]
-    else:
-        #entities = ['famous_and_familiar']
-        categories = ['famous_and_familiar']
-        #categories = ['classification_coarse', 'classification_famous_familiar']
-        entities = ['classification_coarse', 'classification_famous_familiar']
-
-    if args.corrected:
-        if args.semantic_category == 'all':
-            controls = [' - {} - controlled for length'.format(args.entities.replace('_', ' '))]
-        else:
-            controls = [' - controlled for length']
-    else:
-        if args.semantic_category == 'all':
-            controls = [' - {} - uncontrolled'.format(args.entities.replace('_', ' '))]
-        else:
-            controls = [' - uncontrolled']
-
-    ### ERP
-    if args.data_kind != 'time_frequency':
-
-        data_dict = {'' : {c : {k : list() for k in controls} for c in categories}}
-
-    ### Time-frequency
-    elif args.data_kind == 'time_frequency':
-
-        frequencies = numpy.arange(1, 40, 3)
-        frequencies = numpy.arange(44, 80, 3)
-        data_dict = {'{}_hz_'.format(hz) : {c : {k : list() for k in entities} \
-                                   for c in categories} for hz in frequencies}
-
-    return data_dict
 
 def read_files(args):
 
     subjects = 33
 
-    '''
-    data_dict = possibilities(args)
-
-    for hz, v in data_dict.items():
-
-        for cat, values in v.items():
-
-            for control in values.keys():
-    '''
 
     data = list()
     path = prepare_folder(args)
@@ -202,9 +121,11 @@ def read_files(args):
         #    file_path = file_path.replace('_scores.txt', '_uncorrected_scores.txt')
         correction = 'corrected' if args.corrected else 'uncorrected'
         #if args.analysis in 'time_resolved_rsa', 'time_resolved_rsa_encoding']:
-        file_path = os.path.join(path, 'sub_{:02}_{}_{}_scores.txt'.format(sub, args.input_target_model, correction))
-        #else:
-        #    file_path = os.path.join(path, 'sub_{:02}_accuracy_{}_scores.txt'.format(sub, correction))
+        #if args.input_target_model not in ['coarse_category', 'fine_category', 'famous_familiar'] or args.mapping_model == 'rsa':
+        if 1 == 1:
+            file_path = os.path.join(path, 'sub_{:02}_{}_{}_scores.txt'.format(sub, args.input_target_model, correction))
+        else:
+            file_path = os.path.join(path, 'sub_{:02}_accuracy_{}_scores.txt'.format(sub, correction))
         
         if not os.path.exists(file_path):
             print('missing: {}'.format(file_path))
